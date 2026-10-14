@@ -33,7 +33,7 @@ test('parseTime treats zone-less Orca timestamps as UTC', () => {
 
 test('terminal titles drop spinner glyphs and incarnations yield the worktree name', () => {
   assert.equal(cleanTerminalTitle('◐ Orca CLI의 SQLite 접근'), 'Orca CLI의 SQLite 접근')
-  assert.equal(worktreeNameFromIncarnation('id::/a/b/stonefish@@14f2:uuid'), 'stonefish')
+  assert.equal(worktreeNameFromIncarnation('id::/a/b/my-worktree@@14f2:uuid'), 'my-worktree')
   assert.equal(worktreeNameFromIncarnation(undefined), '')
 })
 
