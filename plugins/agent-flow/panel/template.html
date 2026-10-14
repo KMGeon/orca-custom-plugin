@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<style>
+/* Orca injects --background/--foreground/--border/... into panels; state colours stay mid-tone so both themes read. */
+:root {
+  --working: #3b82f6;
+  --blocked: #d97706;
+  --done: #16a34a;
+  --failed: #dc2626;
+  --idle: #8b93a5;
+  --spawn: #8b5cf6;
+  --msg: #8b93a5;
+  --ui-bg: var(--background, #16181d);
+  --ui-fg: var(--foreground, #e4e6eb);
+  --ui-muted: var(--muted-foreground, #9aa1b0);
+  --ui-line: var(--border, #2d313a);
+  --ui-card: var(--card, #1d2027);
+  --ui-chip: var(--secondary, #262a33);
+  --ui-accent: var(--primary, #7c8cff);
+  --font: system-ui, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--ui-bg); color: var(--ui-fg); font: 13px/1.5 var(--font); }
+button, select, input { font: inherit; color: inherit; }
+.bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--ui-line); }
+select { background: var(--ui-chip); border: 1px solid var(--ui-line); border-radius: 6px; padding: 4px 6px; min-width: 0; flex: 1 1 200px; max-width: 100%; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { display: inline-flex; align-items: center; gap: 5px; padding: 1px 8px; border-radius: 999px; background: var(--ui-chip); color: var(--ui-muted); font-size: 11.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--c, var(--idle)); flex: none; }
+.s-working { --c: var(--working); } .s-blocked { --c: var(--blocked); } .s-done { --c: var(--done); }
+.s-failed { --c: var(--failed); } .s-idle { --c: var(--idle); }
+.objective { padding: 8px 12px 0; color: var(--ui-muted); font-size: 12px; overflow-wrap: anywhere; }
+.graph-scroll { overflow: auto; padding: 4px 0; }
+svg.graph { display: block; min-width: 560px; width: 100%; height: auto; margin: 0 auto; }
+.node { cursor: pointer; }
+.node:focus { outline: none; }
+.node rect.box { fill: var(--ui-card); stroke: var(--ui-line); stroke-width: 1.5; }
+.node.s-working rect.box { stroke: var(--working); }
+.node.s-blocked rect.box { stroke: var(--blocked); stroke-width: 2; }
+.node.s-done rect.box { stroke: var(--done); }
+.node.s-failed rect.box { stroke: var(--failed); }
+.node.sel rect.box, .node:focus-visible rect.box { stroke: var(--ui-accent); stroke-width: 2.5; }
+.node .name { font: 600 13px var(--font); fill: var(--ui-fg); }
+.node .meta { font: 10.5px var(--mono); fill: var(--ui-muted); }
+.node .now { font: 11px var(--font); fill: var(--ui-fg); }
+.node circle.st { fill: var(--c, var(--idle)); }
+.node .pulse { fill: none; stroke: var(--c); opacity: 0; }
+.node.s-blocked .pulse { animation: ring 1.6s ease-out infinite; }
+.node.gone rect.box { stroke-dasharray: 4 3; }
+@keyframes ring { 0% { opacity: .7; r: 6; } 100% { opacity: 0; r: 15; } }
+.edge path { fill: none; stroke: var(--c); stroke-width: 1.8; }
+.edge.k-message path, .edge.k-reply path { stroke-dasharray: 5 5; }
+.edge.old path { opacity: .4; }
+.edge.live path { stroke-width: 2.4; stroke-dasharray: 7 6; animation: flow .7s linear infinite; }
+@keyframes flow { to { stroke-dashoffset: -13; } }
+.edge .lbl-bg { fill: var(--ui-bg); stroke: var(--c); stroke-width: 1; }
+.edge.old .lbl-bg { stroke: var(--ui-line); }
+.edge .lbl { font: 500 11px var(--font); fill: var(--ui-fg); }
+.edge.old .lbl { fill: var(--ui-muted); }
+.edge .cnt { font: 10px var(--mono); fill: var(--ui-muted); }
+.k-dispatch { --c: var(--ui-accent); } .k-message { --c: var(--msg); } .k-ask { --c: var(--blocked); }
+.k-reply { --c: var(--done); } .k-result { --c: var(--done); } .k-failed { --c: var(--failed); } .k-handoff { --c: var(--spawn); }
+marker path { fill: var(--c); }
+.colhead { font: 600 10px var(--font); fill: var(--ui-muted); letter-spacing: .06em; }
+.colline { stroke: var(--ui-line); stroke-dasharray: 2 4; }
+.player { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--ui-line); border-bottom: 1px solid var(--ui-line); }
+.player button { background: var(--ui-chip); border: 1px solid var(--ui-line); border-radius: 6px; padding: 3px 10px; cursor: pointer; }
+.player button:hover { border-color: var(--ui-accent); }
+.player input[type=range] { flex: 1 1 160px; min-width: 0; accent-color: var(--ui-accent); }
+.clock { font: 12px var(--mono); color: var(--ui-muted); font-variant-numeric: tabular-nums; }
+.live-tag { font-size: 11px; color: var(--done); }
+.live-tag[hidden] { display: none; }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 1px; }
+.lower { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+.lower > section { padding: 10px 12px; min-width: 0; }
+.lower h3 { margin: 0 0 6px; font-size: 11px; font-weight: 600; color: var(--ui-muted); letter-spacing: .05em; }
+.feed { list-style: none; margin: 0; padding: 0; max-height: 240px; overflow-y: auto; }
+.feed li { display: grid; grid-template-columns: 40px 44px minmax(0, 1fr); gap: 6px; padding: 3px 4px; border-radius: 5px; align-items: baseline; }
+.feed li.fresh { background: var(--ui-chip); }
+.feed li.muted { display: block; }
+.feed .t { font: 11px var(--mono); color: var(--ui-muted); }
+.feed .k { font-size: 10.5px; font-weight: 600; color: var(--c); }
+.feed .body { overflow-wrap: anywhere; }
+.feed .who { font-weight: 600; }
+.feed .txt, .muted { color: var(--ui-muted); }
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; font-size: 10.5px; font-weight: 600; color: var(--ui-muted); padding: 3px 4px; border-bottom: 1px solid var(--ui-line); }
+td { padding: 4px; border-bottom: 1px solid var(--ui-line); vertical-align: top; overflow-wrap: anywhere; }
+td.mono { font: 11px var(--mono); white-space: nowrap; }
+.detail { display: flex; flex-direction: column; gap: 6px; }
+.detail .row { display: flex; flex-wrap: wrap; gap: 6px; }
+.empty { padding: 28px 16px; text-align: center; color: var(--ui-muted); }
+.empty b { display: block; color: var(--ui-fg); margin-bottom: 4px; }
+.empty code { font: 11.5px var(--mono); background: var(--ui-chip); padding: 1px 5px; border-radius: 4px; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 6px 12px; font-size: 11px; color: var(--ui-muted); }
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+.legend i { width: 16px; border-top: 2px solid var(--c); }
+@media (prefers-reduced-motion: reduce) { .edge.live path, .node.s-blocked .pulse { animation: none; } }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+'use strict'
+var DATA = /*__AGENT_FLOW_DATA__*/null
+
+var NS = 'http://www.w3.org/2000/svg'
+var NODE_W = 172, NODE_H = 64, COL_GAP = 300, ROW_GAP = 104, TOP = 40
+var LIVE_WINDOW_MS = 90 * 1000
+var KIND_LABEL = { dispatch: '시킴', message: '메시지', ask: '질문', reply: '답변', result: '완료', failed: '실패', handoff: '핸드오프' }
+var STATE_LABEL = { working: '작업 중', blocked: '막힘', done: '완료', failed: '실패', idle: '대기' }
+var LEGEND = ['dispatch', 'ask', 'reply', 'result', 'failed', 'message', 'handoff']
+
+var app = document.getElementById('app')
+var view = { run: null, t: 0, selected: null, timer: null }
+
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] }) }
+function cut(s, n) { s = String(s || ''); return s.length > n ? s.slice(0, n - 1) + '…' : s }
+function svg(tag, attrs, parent) {
+  var node = document.createElementNS(NS, tag)
+  for (var k in attrs) node.setAttribute(k, attrs[k])
+  if (parent) parent.appendChild(node)
+  return node
+}
+function stateAt(list, t) { var s = 'idle'; (list || []).forEach(function (p) { if (p[0] <= t) s = p[1] }); return s }
+function clock(ms) { var d = new Date(ms); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') }
+function ago(ms) {
+  var m = Math.round((Date.now() - ms) / 60000)
+  if (m < 1) return '방금'
+  if (m < 60) return m + '분 전'
+  if (m < 1440) return Math.round(m / 60) + '시간 전'
+  return Math.round(m / 1440) + '일 전'
+}
+
+function boot() {
+  if (!DATA) return emptyState('데이터를 기다리는 중', '에이전트 상태가 바뀌거나 명령 팔레트에서 <code>Agent Flow: 새로고침</code>을 실행하면 그려집니다.')
+  if (DATA.error) return emptyState('데이터를 읽지 못했습니다', esc(DATA.error))
+  if (!DATA.runs.length) return emptyState('오케스트레이션 run이 없습니다', '<code>orca orchestration run-create</code>로 run을 만들면 여기에 흐름이 나타납니다.')
+  var requested = DATA.runs.filter(function (r) { return '#' + r.id === location.hash })[0]
+  var active = DATA.runs.filter(function (r) { return r.active })[0]
+  selectRun((requested || active || DATA.runs[0]).id)
+}
+
+function emptyState(title, body) { app.innerHTML = '<div class="empty"><b>' + esc(title) + '</b>' + body + '</div>' }
+
+function selectRun(id) {
+  stop()
+  view.run = DATA.runs.filter(function (r) { return r.id === id })[0]
+  view.selected = null
+  view.t = view.run.updatedAt
+  layout()
+  render()
+}
+
+function layout() {
+  var run = view.run
+  app.innerHTML =
+    '<div class="bar"><select id="run" aria-label="Run 선택">' +
+    DATA.runs.map(function (r) {
+      return '<option value="' + esc(r.id) + '"' + (r.id === run.id ? ' selected' : '') + '>' + (r.active ? '● ' : '') + esc(cut(r.title, 60)) + ' · ' + ago(r.updatedAt) + '</option>'
+    }).join('') +
+    '</select><div class="chips" id="summary"></div></div>' +
+    '<div class="objective">' + esc(run.title) + '</div>' +
+    '<div class="graph-scroll"><svg class="graph" id="graph" role="img" aria-label="에이전트 위임 흐름"></svg></div>' +
+    '<div class="legend">' + LEGEND.map(function (k) { return '<span class="k-' + k + '"><i></i>' + KIND_LABEL[k] + '</span>' }).join('') + '</div>' +
+    '<div class="player"><button id="play" type="button">▶ 재생</button>' +
+    '<input type="range" id="scrub" aria-label="재생 위치" min="' + run.createdAt + '" max="' + run.updatedAt + '" step="1000" value="' + view.t + '">' +
+    '<span class="clock" id="clock"></span><span class="live-tag" id="live">● 최신</span></div>' +
+    '<div class="lower"><section><h3>활동</h3><ol class="feed" id="feed"></ol></section>' +
+    '<section><h3 id="side-title">태스크</h3><div id="side"></div></section></div>'
+
+  document.getElementById('run').addEventListener('change', function (e) { selectRun(e.target.value) })
+  document.getElementById('scrub').addEventListener('input', function (e) { stop(); view.t = Number(e.target.value); render() })
+  document.getElementById('play').addEventListener('click', togglePlay)
+  drawGraph()
+}
+
+function drawGraph() {
+  var run = view.run
+  var g = document.getElementById('graph')
+  var cols = {}
+  run.agents.forEach(function (a) { (cols[a.col] = cols[a.col] || []).push(a) })
+  var colCount = Math.max.apply(null, run.agents.map(function (a) { return a.col })) + 1
+  var maxRows = Math.max.apply(null, Object.keys(cols).map(function (c) { return cols[c].length }))
+  var width = Math.max(560, colCount * COL_GAP)
+  var height = TOP + maxRows * ROW_GAP + 10
+  g.setAttribute('viewBox', '0 0 ' + width + ' ' + height)
+  // Small runs would otherwise scale up to fill a wide panel.
+  g.style.maxWidth = Math.round(width * 1.15) + 'px'
+  var pos = {}
+  Object.keys(cols).forEach(function (c) {
+    var list = cols[c]
+    var x = COL_GAP * (Number(c) + 0.5) * (width / (colCount * COL_GAP))
+    var offset = (maxRows - list.length) * ROW_GAP / 2
+    list.forEach(function (a, i) { pos[a.id] = { x: x, y: TOP + offset + i * ROW_GAP + ROW_GAP / 2 } })
+  })
+  view.pos = pos
+
+  var defs = svg('defs', {}, g)
+  LEGEND.forEach(function (k) {
+    var m = svg('marker', { id: 'arr-' + k, viewBox: '0 0 10 10', refX: '8', refY: '5', markerWidth: '7', markerHeight: '7', orient: 'auto-start-reverse', class: 'k-' + k }, defs)
+    svg('path', { d: 'M0,0 L10,5 L0,10 z' }, m)
+  })
+  for (var c = 0; c < colCount; c++) {
+    var x = COL_GAP * (c + 0.5) * (width / (colCount * COL_GAP))
+    var head = svg('text', { x: x, y: 18, 'text-anchor': 'middle', class: 'colhead' }, g)
+    head.textContent = c === 0 ? '코디네이터' : c === 1 ? '작업자' : '하위 작업자 ' + (c - 1)
+    svg('line', { x1: x, y1: 26, x2: x, y2: height - 4, class: 'colline' }, g)
+  }
+
+  var edgeLayer = svg('g', {}, g)
+  var nodeLayer = svg('g', {}, g)
+  var pairs = {}
+  run.events.forEach(function (e) { pairs[e.from + '>' + e.to] = true })
+  view.edges = {}
+  Object.keys(pairs).forEach(function (key) {
+    var ends = key.split('>'), a = pos[ends[0]], b = pos[ends[1]]
+    if (!a || !b) return
+    var len = Math.hypot(b.x - a.x, b.y - a.y) || 1
+    var nx = -(b.y - a.y) / len, ny = (b.x - a.x) / len
+    var bend = pairs[ends[1] + '>' + ends[0]] ? 30 : 12
+    var ctl = { x: (a.x + b.x) / 2 + nx * bend, y: (a.y + b.y) / 2 + ny * bend }
+    var s = clip(a, ctl), t = clip(b, ctl)
+    var group = svg('g', { class: 'edge' }, edgeLayer)
+    var path = svg('path', { d: 'M' + s.x + ',' + s.y + ' Q' + ctl.x + ',' + ctl.y + ' ' + t.x + ',' + t.y }, group)
+    var lx = 0.25 * s.x + 0.5 * ctl.x + 0.25 * t.x, ly = 0.25 * s.y + 0.5 * ctl.y + 0.25 * t.y
+    var bg = svg('rect', { rx: 4, class: 'lbl-bg' }, group)
+    var lbl = svg('text', { x: lx, y: ly + 4, 'text-anchor': 'middle', class: 'lbl' }, group)
+    var cnt = svg('text', { class: 'cnt' }, group)
+    view.edges[key] = { group: group, path: path, bg: bg, lbl: lbl, cnt: cnt, ly: ly, key: null }
+  })
+
+  view.nodes = {}
+  run.agents.forEach(function (agent) {
+    var p = pos[agent.id]
+    var node = svg('g', { class: 'node', tabindex: '0', role: 'button', 'aria-label': agent.name + ' 상세', transform: 'translate(' + (p.x - NODE_W / 2) + ',' + (p.y - NODE_H / 2) + ')' }, nodeLayer)
+    svg('rect', { class: 'box', width: NODE_W, height: NODE_H, rx: 8 }, node)
+    svg('circle', { class: 'pulse', cx: 14, cy: 17, r: 6 }, node)
+    svg('circle', { class: 'st', cx: 14, cy: 17, r: 4.5 }, node)
+    svg('text', { x: 25, y: 21, class: 'name' }, node).textContent = cut(agent.name, 17)
+    svg('text', { x: 12, y: 39, class: 'meta' }, node).textContent = cut((agent.cli || (agent.role === 'coordinator' ? 'coordinator' : 'agent')) + (agent.branch ? ' · ' + agent.branch : ''), 26)
+    var now = svg('text', { x: 12, y: 56, class: 'now' }, node)
+    var title = svg('title', {}, node)
+    title.textContent = agent.name + (agent.branch ? '\n' + agent.branch : '') + (agent.live ? '' : '\n(터미널 종료됨)')
+    function pick() { view.selected = view.selected === agent.id ? null : agent.id; render() }
+    node.addEventListener('click', pick)
+    node.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick() } })
+    view.nodes[agent.id] = { node: node, now: now, live: agent.live }
+  })
+}
+
+function clip(from, to) {
+  var dx = to.x - from.x, dy = to.y - from.y
+  var s = Math.min((NODE_W / 2 + 5) / Math.abs(dx || 1e-6), (NODE_H / 2 + 5) / Math.abs(dy || 1e-6), 1)
+  return { x: from.x + dx * s, y: from.y + dy * s }
+}
+
+function agentName(id) {
+  var a = view.run.agents.filter(function (x) { return x.id === id })[0]
+  return a ? a.name : id
+}
+
+function render() {
+  var run = view.run, t = view.t
+  var past = run.events.filter(function (e) { return e.t <= t })
+  var atEnd = t >= run.updatedAt
+  document.getElementById('scrub').value = t
+  document.getElementById('clock').textContent = clock(t)
+  document.getElementById('live').hidden = !atEnd
+
+  run.agents.forEach(function (agent) {
+    var n = view.nodes[agent.id]
+    var st = stateAt(run.agentStates[agent.id], t)
+    n.node.setAttribute('class', 'node s-' + st + (view.selected === agent.id ? ' sel' : '') + (n.live ? '' : ' gone'))
+    var task = run.tasks.filter(function (k) { return k.owner === agent.id && stateAt(k.states, t) === 'working' }).pop()
+    n.now.textContent = cut(STATE_LABEL[st] + (task ? ' · ' + task.title : ''), 26)
+  })
+
+  Object.keys(view.edges).forEach(function (key) {
+    var E = view.edges[key]
+    var evs = past.filter(function (e) { return e.from + '>' + e.to === key })
+    if (!evs.length) { E.group.setAttribute('visibility', 'hidden'); return }
+    var last = evs[evs.length - 1]
+    var live = t - last.t < LIVE_WINDOW_MS
+    E.group.setAttribute('visibility', 'visible')
+    E.group.setAttribute('class', 'edge k-' + last.kind + (live ? ' live' : ' old'))
+    E.path.setAttribute('marker-end', 'url(#arr-' + last.kind + ')')
+    // Busy runs bury the graph in labels; keep the ones that answer "who asked whom for what".
+    var ends = key.split('>')
+    var labelled = live || last.kind === 'dispatch' || ends.indexOf(view.selected) !== -1
+    ;[E.bg, E.lbl, E.cnt].forEach(function (n) { n.setAttribute('visibility', labelled ? 'inherit' : 'hidden') })
+    var text = cut(last.text, 16)
+    if (E.key !== text + evs.length) {
+      E.key = text + evs.length
+      E.lbl.textContent = text
+      var bb = E.lbl.getBBox()
+      var extra = evs.length > 1 ? 20 : 0
+      E.bg.setAttribute('x', bb.x - 6); E.bg.setAttribute('y', bb.y - 2)
+      E.bg.setAttribute('width', bb.width + 12 + extra); E.bg.setAttribute('height', bb.height + 4)
+      E.cnt.textContent = evs.length > 1 ? '×' + evs.length : ''
+      E.cnt.setAttribute('x', bb.x + bb.width + 4); E.cnt.setAttribute('y', E.ly + 4)
+    }
+  })
+
+  var counts = { working: 0, blocked: 0, done: 0 }
+  run.agents.forEach(function (a) { var s = stateAt(run.agentStates[a.id], t); if (s in counts) counts[s]++ })
+  document.getElementById('summary').innerHTML = ['working', 'blocked', 'done'].map(function (s) {
+    return '<span class="chip s-' + s + '"><span class="dot"></span>' + STATE_LABEL[s] + ' ' + counts[s] + '</span>'
+  }).join('')
+
+  document.getElementById('feed').innerHTML = past.slice().reverse().map(function (e) {
+    return '<li class="k-' + e.kind + (t - e.t < LIVE_WINDOW_MS ? ' fresh' : '') + '"><span class="t">' + clock(e.t) + '</span><span class="k">' + KIND_LABEL[e.kind] + '</span>' +
+      '<span class="body"><span class="who">' + esc(cut(agentName(e.from), 28)) + '</span> → <span class="who">' + esc(cut(agentName(e.to), 28)) + '</span> <span class="txt">' + esc(e.text) + '</span></span></li>'
+  }).join('') || '<li class="muted">아직 이벤트가 없습니다</li>'
+
+  renderSide(past)
+}
+
+function renderSide(past) {
+  var run = view.run, t = view.t
+  var title = document.getElementById('side-title'), side = document.getElementById('side')
+  if (!view.selected) {
+    title.textContent = '태스크 ' + run.tasks.length
+    side.innerHTML = '<table><thead><tr><th>할 일</th><th>담당</th><th>상태</th></tr></thead><tbody>' + run.tasks.map(function (k) {
+      var s = stateAt(k.states, t)
+      var pre = (k.deps && k.deps.length ? '선행 ' + k.deps.length + '개' : '') + (k.parent ? ' ↳ 하위' : '')
+      return '<tr><td>' + esc(k.title) + (pre ? '<div class="muted">' + esc(pre) + '</div>' : '') + '</td><td>' + esc(k.owner ? agentName(k.owner) : '—') + '</td>' +
+        '<td><span class="chip s-' + s + '"><span class="dot"></span>' + STATE_LABEL[s] + '</span></td></tr>'
+    }).join('') + '</tbody></table>'
+    return
+  }
+  var id = view.selected
+  var agent = run.agents.filter(function (a) { return a.id === id })[0]
+  var st = stateAt(run.agentStates[id], t)
+  var gave = past.filter(function (e) { return e.from === id && e.kind === 'dispatch' })
+  var got = past.filter(function (e) { return e.to === id && e.kind === 'dispatch' })
+  title.textContent = agent.name
+  side.innerHTML = '<div class="detail"><div class="row"><span class="chip s-' + st + '"><span class="dot"></span>' + STATE_LABEL[st] + '</span>' +
+    '<span class="chip">' + esc(agent.cli || 'agent') + '</span>' + (agent.branch ? '<span class="chip">' + esc(agent.branch) + '</span>' : '') +
+    (agent.live ? '' : '<span class="chip">터미널 종료됨</span>') + '</div>' +
+    '<div><b>시킨 일</b>' + (gave.map(function (e) { return '<div>→ ' + esc(agentName(e.to)) + ': ' + esc(e.text) + '</div>' }).join('') || '<div class="muted">없음</div>') + '</div>' +
+    '<div><b>받은 일</b>' + (got.map(function (e) { return '<div>← ' + esc(agentName(e.from)) + ': ' + esc(e.text) + '</div>' }).join('') || '<div class="muted">없음</div>') + '</div>' +
+    '<div class="muted">다시 누르면 태스크 목록으로 돌아갑니다</div></div>'
+}
+
+function togglePlay() {
+  if (view.timer) return stop()
+  var run = view.run
+  if (view.t >= run.updatedAt) view.t = run.createdAt
+  var step = Math.max(1000, (run.updatedAt - run.createdAt) / 300)
+  document.getElementById('play').textContent = '❚❚ 정지'
+  view.timer = setInterval(function () {
+    view.t = Math.min(run.updatedAt, view.t + step)
+    render()
+    if (view.t >= run.updatedAt) stop()
+  }, 50)
+}
+
+function stop() {
+  clearInterval(view.timer)
+  view.timer = null
+  var play = document.getElementById('play')
+  if (play) play.textContent = '▶ 재생'
+}
+
+boot()
+</script>
+</body>
+</html>
