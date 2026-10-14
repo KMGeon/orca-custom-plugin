@@ -1,0 +1,39 @@
+name: Release plugins
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-plugins
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm test
+
+      - name: Tag plugins and update the marketplace list
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          node scripts/release-plugins.mjs --tag --push --write
+          # GITHUB_TOKEN pushes do not trigger workflows, so this commit cannot loop.
+          if [ -n "$(git status --porcelain -- orca-marketplace.json)" ]; then
+            git add orca-marketplace.json
+            git commit -m "chore: 마켓플레이스 목록 갱신"
+            git push
+          fi

@@ -3,17 +3,45 @@
   "id": "agent-flow",
   "publisher": "kmgeon",
   "name": "Agent Flow",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Orca 오케스트레이션 run에서 어떤 에이전트가 누구에게 무엇을 시켰는지 흐름 그래프로 보여 줍니다.",
-  "author": { "name": "KMGeon", "url": "https://github.com/KMGeon" },
+  "author": {
+    "name": "KMGeon",
+    "url": "https://github.com/KMGeon"
+  },
   "repository": "https://github.com/KMGeon/orca-custom-plugin",
-  "engines": { "orca": ">=1.4.0" },
+  "engines": {
+    "orca": ">=1.4.0"
+  },
   "pluginApi": 1,
   "main": "main.mjs",
   "contributes": {
-    "panels": [{ "id": "flow", "title": "Agent Flow", "icon": "workflow", "entry": "panel/index.html" }],
-    "commands": [{ "id": "agent-flow-refresh", "title": "Agent Flow: 새로고침" }],
-    "events": [{ "on": "agent.status.changed" }]
+    "panels": [
+      {
+        "id": "flow",
+        "title": "Agent Flow",
+        "icon": "workflow",
+        "entry": "panel/index.html"
+      }
+    ],
+    "commands": [
+      {
+        "id": "agent-flow-refresh",
+        "title": "Agent Flow: 새로고침"
+      }
+    ],
+    "events": [
+      {
+        "on": "agent.status.changed"
+      }
+    ]
   },
-  "capabilities": [{ "kind": "storage" }, { "kind": "events:subscribe" }]
+  "capabilities": [
+    {
+      "kind": "storage"
+    },
+    {
+      "kind": "events:subscribe"
+    }
+  ]
 }

@@ -1,0 +1,11 @@
+{
+  "name": "KMGeon Orca Plugins",
+  "owner": "KMGeon",
+  "repositoryUrl": "git@github.com:KMGeon/orca-custom-plugin.git",
+  "plugins": {
+    "agent-flow": {
+      "listed": false,
+      "reason": "패널 파일을 스스로 다시 쓰므로 개발 경로 설치에서만 동작합니다."
+    }
+  }
+}
