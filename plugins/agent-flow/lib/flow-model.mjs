@@ -160,7 +160,9 @@ export function buildRunFlow({ run, tasks = [], dispatches = new Map(), messages
 
   return {
     id: run.id,
+    source: 'orca',
     title: clip(run.objective) || run.id,
+    columnNames: ['코디네이터', '작업자', '하위 작업자'],
     createdAt: runStart,
     updatedAt: Math.max(runStart, ...events.map((e) => e.t)),
     active: taskList.some((task) => task.status !== 'done' && task.status !== 'failed'),

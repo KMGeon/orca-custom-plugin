@@ -43,7 +43,7 @@ export class OrchestrationSnapshotter {
         })
       )
     }
-    return flows
+    return { flows, terminals }
   }
 
   async dispatchFor(cli, task) {

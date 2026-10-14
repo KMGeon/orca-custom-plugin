@@ -3,11 +3,14 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { resolveOrcaCli } from './lib/orca-cli.mjs'
 import { OrchestrationSnapshotter } from './lib/orchestration-snapshot.mjs'
+import { FlowCollector } from './lib/snapshot.mjs'
 import { renderPanel, writePanelIfChanged } from './lib/panel-render.mjs'
 
 const ROOT = dirname(fileURLToPath(import.meta.url))
 const TEMPLATE_PATH = join(ROOT, 'panel', 'template.html')
 const PANEL_PATH = join(ROOT, 'panel', 'index.html')
+// Non-dev installs live in a content-addressed copy that Orca neither watches nor lets us modify.
+const INSTALLED_COPY = /[\\/]plugins[\\/][^\\/]+[\\/][0-9a-f]{64}$/.test(ROOT)
 
 const ACTIVE_POLL_MS = 3_000
 const QUIET_POLL_MS = 15_000
@@ -16,6 +19,11 @@ const STOP_AFTER_QUIET_MS = 10 * 60_000
 const NUDGE_DEBOUNCE_MS = 800
 
 export default function activate(orca) {
+  if (INSTALLED_COPY) {
+    orca.log('설치 복사본에서는 패널을 갱신할 수 없습니다. 설정 → 플러그인 → 개발에 이 폴더의 원본 경로를 추가하세요.')
+    orca.commands.register('agent-flow-refresh', async () => ({ error: 'dev-path install required' }))
+    return
+  }
   const worker = new AgentFlowWorker(orca)
   orca.commands.register('agent-flow-refresh', async () => {
     const result = await worker.refresh()
@@ -32,7 +40,7 @@ class AgentFlowWorker {
     this.inflight = null
     this.timer = null
     this.lastActivityAt = Date.now()
-    this.snapshotter = null
+    this.collector = null
   }
 
   nudge() {
@@ -66,12 +74,12 @@ class AgentFlowWorker {
   async render() {
     let data
     try {
-      this.snapshotter ??= this.createSnapshotter()
-      const runs = await this.snapshotter.snapshot()
-      data = { version: 1, runs, error: null }
+      this.collector ??= this.createCollector()
+      const { runs, warnings } = await this.collector.collect()
+      data = { version: 2, runs, warnings, error: null }
     } catch (error) {
-      this.snapshotter = null
-      data = { version: 1, runs: [], error: error?.message ?? String(error) }
+      this.collector = null
+      data = { version: 2, runs: [], warnings: [], error: error?.message ?? String(error) }
       this.orca.log(`refresh failed: ${data.error}`)
     }
     const template = await readFile(TEMPLATE_PATH, 'utf8')
@@ -82,9 +90,9 @@ class AgentFlowWorker {
     return { changed, runs: data.runs.length, anyActive, error: data.error }
   }
 
-  createSnapshotter() {
+  createCollector() {
     const cliPath = resolveOrcaCli()
     if (!cliPath) throw new Error('orca CLI를 찾지 못했습니다. Orca 설정에서 CLI를 설치하세요.')
-    return new OrchestrationSnapshotter(cliPath)
+    return new FlowCollector({ orcaSnapshotter: new OrchestrationSnapshotter(cliPath) })
   }
 }

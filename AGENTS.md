@@ -19,6 +19,19 @@ Orca 소스에서 확인한 플러그인 API의 사실입니다 (pluginApi 1, Or
 - **패널 디자인 토큰**: `--background`, `--foreground`, `--card`, `--secondary`, `--muted-foreground`, `--primary`, `--border`, `--destructive` 등을 Orca가 주입합니다. 폰트는 `data:`만 허용되므로 시스템 폰트를 쓰세요.
 - **`terminal.sendText`는 반드시 특정 터미널 id로 보냅니다.** 에이전트 터미널을 고르면 그 에이전트의 입력창에 글자가 들어갑니다.
 
+## 설치 방식
+
+- **일반 설치**(로컬 경로, git, 마켓)는 플러그인을 `<userData>/plugins/<publisher>.<id>/<내용 해시>/`로 복사해서 실행합니다. 복사본은 감시하지 않고, 내용이 바뀌면 무결성 검사에 걸립니다.
+- **개발 설치**(설정 → 플러그인 → 개발 → 경로 추가)는 원본 폴더에서 실행하고, 파일이 바뀌면 패널을 다시 불러옵니다. 자기 파일을 다시 쓰는 플러그인은 이 방식으로만 동작합니다.
+- git 설치는 저장소 **루트**의 `orca-plugin.json`만 읽습니다. 하위 폴더 지정은 안 됩니다.
+
+## 에이전트 데이터 출처 (공개 API 아님)
+
+- `<userData>/agent-hooks/last-status.json`: 패널별 최신 에이전트 상태입니다. `entries[paneKey].payload.subagents`에 실행 중인 서브에이전트가, `providerSession.transcriptPath`에 Claude 세션 기록 경로가 있습니다. `paneKey`는 `orca terminal list`의 `tabId:leafId`입니다.
+- Claude 세션 기록 옆 `<세션>/subagents/agent-<id>.meta.json`: 서브에이전트의 `agentType`, `description`, `spawnDepth`입니다.
+- `~/.claude/teams/<팀>/config.json`(멤버), `inboxes/<받는사람>.json`(메시지 `from`, `text`, `timestamp`)입니다.
+- 모두 형식이 바뀔 수 있으니 필드를 전부 선택 사항으로 다루세요.
+
 ## orca CLI 사용
 
 - 워커에서 Orca 데이터를 더 읽어야 하면 `orca … --json`을 실행합니다. 환경 변수가 비워진 상태에서도 동작합니다.

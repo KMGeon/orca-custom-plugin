@@ -34,7 +34,7 @@ select { background: var(--ui-chip); border: 1px solid var(--ui-line); border-ra
 .s-failed { --c: var(--failed); } .s-idle { --c: var(--idle); }
 .objective { padding: 8px 12px 0; color: var(--ui-muted); font-size: 12px; overflow-wrap: anywhere; }
 .graph-scroll { overflow: auto; padding: 4px 0; }
-svg.graph { display: block; min-width: 560px; width: 100%; height: auto; }
+svg.graph { display: block; min-width: 560px; width: 100%; height: auto; margin: 0 auto; }
 .node { cursor: pointer; }
 .node:focus { outline: none; }
 .node rect.box { fill: var(--ui-card); stroke: var(--ui-line); stroke-width: 1.5; }
@@ -62,7 +62,10 @@ svg.graph { display: block; min-width: 560px; width: 100%; height: auto; }
 .edge.old .lbl { fill: var(--ui-muted); }
 .edge .cnt { font: 10px var(--mono); fill: var(--ui-muted); }
 .k-dispatch { --c: var(--ui-accent); } .k-message { --c: var(--msg); } .k-ask { --c: var(--blocked); }
-.k-reply { --c: var(--done); } .k-result { --c: var(--done); } .k-failed { --c: var(--failed); } .k-handoff { --c: var(--spawn); }
+.k-reply { --c: var(--done); } .k-result { --c: var(--done); } .k-failed { --c: var(--failed); } .k-handoff { --c: var(--spawn); } .k-spawn { --c: var(--spawn); }
+.node.r-subagent rect.box { stroke-dasharray: 5 3; }
+.node.r-subagent.s-working rect.box { stroke: var(--spawn); }
+.warn { padding: 4px 12px 0; color: var(--blocked); font-size: 11.5px; }
 marker path { fill: var(--c); }
 .colhead { font: 600 10px var(--font); fill: var(--ui-muted); letter-spacing: .06em; }
 .colline { stroke: var(--ui-line); stroke-dasharray: 2 4; }
@@ -80,6 +83,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 .feed { list-style: none; margin: 0; padding: 0; max-height: 240px; overflow-y: auto; }
 .feed li { display: grid; grid-template-columns: 40px 44px minmax(0, 1fr); gap: 6px; padding: 3px 4px; border-radius: 5px; align-items: baseline; }
 .feed li.fresh { background: var(--ui-chip); }
+.feed li.muted { display: block; }
 .feed .t { font: 11px var(--mono); color: var(--ui-muted); }
 .feed .k { font-size: 10.5px; font-weight: 600; color: var(--c); }
 .feed .body { overflow-wrap: anywhere; }
@@ -109,9 +113,10 @@ var DATA = null
 var NS = 'http://www.w3.org/2000/svg'
 var NODE_W = 172, NODE_H = 64, COL_GAP = 300, ROW_GAP = 104, TOP = 40
 var LIVE_WINDOW_MS = 90 * 1000
-var KIND_LABEL = { dispatch: '시킴', message: '메시지', ask: '질문', reply: '답변', result: '완료', failed: '실패', handoff: '핸드오프' }
+var KIND_LABEL = { dispatch: '시킴', spawn: '생성', message: '메시지', ask: '질문', reply: '답변', result: '완료', failed: '실패', handoff: '핸드오프' }
+var SOURCE_LABEL = { orca: 'Orca', 'claude-team': '팀', session: '세션' }
 var STATE_LABEL = { working: '작업 중', blocked: '막힘', done: '완료', failed: '실패', idle: '대기' }
-var LEGEND = ['dispatch', 'ask', 'reply', 'result', 'failed', 'message', 'handoff']
+var LEGEND = ['dispatch', 'spawn', 'ask', 'reply', 'result', 'failed', 'message', 'handoff']
 
 var app = document.getElementById('app')
 var view = { run: null, t: 0, selected: null, timer: null }
@@ -135,11 +140,12 @@ function ago(ms) {
 }
 
 function boot() {
-  if (!DATA) return emptyState('데이터를 기다리는 중', '에이전트 상태가 바뀌거나 명령 팔레트에서 <code>Agent Flow: 새로고침</code>을 실행하면 그려집니다.')
+  if (!DATA) return emptyState('데이터를 기다리는 중', '에이전트 상태가 바뀌거나 명령 팔레트에서 <code>Agent Flow: 새로고침</code>을 실행하면 그려집니다.<br><br>이 화면이 계속 보이면 플러그인을 <b>설정 → 플러그인 → 개발</b>의 경로로 설치했는지 확인하세요. 일반 설치(복사본)에서는 갱신되지 않습니다.')
   if (DATA.error) return emptyState('데이터를 읽지 못했습니다', esc(DATA.error))
-  if (!DATA.runs.length) return emptyState('오케스트레이션 run이 없습니다', '<code>orca orchestration run-create</code>로 run을 만들면 여기에 흐름이 나타납니다.')
-  var active = DATA.runs.filter(function (r) { return r.active })[0]
-  selectRun((active || DATA.runs[0]).id)
+  if (!DATA.runs.length) return emptyState('보여 줄 흐름이 없습니다', 'Orca 오케스트레이션 run, 서브에이전트를 쓴 Claude 세션, Claude 에이전트 팀이 생기면 여기에 나타납니다.')
+  var requested = DATA.runs.filter(function (r) { return '#' + r.id === location.hash })[0]
+  var active = DATA.runs.filter(function (r) { return r.active && r.source === 'orca' })[0] || DATA.runs.filter(function (r) { return r.active })[0]
+  selectRun((requested || active || DATA.runs[0]).id)
 }
 
 function emptyState(title, body) { app.innerHTML = '<div class="empty"><b>' + esc(title) + '</b>' + body + '</div>' }
@@ -158,10 +164,11 @@ function layout() {
   app.innerHTML =
     '<div class="bar"><select id="run" aria-label="Run 선택">' +
     DATA.runs.map(function (r) {
-      return '<option value="' + esc(r.id) + '"' + (r.id === run.id ? ' selected' : '') + '>' + (r.active ? '● ' : '') + esc(cut(r.title, 60)) + ' · ' + ago(r.updatedAt) + '</option>'
+      return '<option value="' + esc(r.id) + '"' + (r.id === run.id ? ' selected' : '') + '>' + (r.active ? '● ' : '') + '[' + (SOURCE_LABEL[r.source] || 'Orca') + '] ' + esc(cut(r.title, 56)) + ' · ' + ago(r.updatedAt) + '</option>'
     }).join('') +
     '</select><div class="chips" id="summary"></div></div>' +
     '<div class="objective">' + esc(run.title) + '</div>' +
+    ((DATA.warnings || []).length ? '<div class="warn">일부 데이터를 읽지 못했습니다: ' + esc(DATA.warnings.join(' / ')) + '</div>' : '') +
     '<div class="graph-scroll"><svg class="graph" id="graph" role="img" aria-label="에이전트 위임 흐름"></svg></div>' +
     '<div class="legend">' + LEGEND.map(function (k) { return '<span class="k-' + k + '"><i></i>' + KIND_LABEL[k] + '</span>' }).join('') + '</div>' +
     '<div class="player"><button id="play" type="button">▶ 재생</button>' +
@@ -186,6 +193,8 @@ function drawGraph() {
   var width = Math.max(560, colCount * COL_GAP)
   var height = TOP + maxRows * ROW_GAP + 10
   g.setAttribute('viewBox', '0 0 ' + width + ' ' + height)
+  // Small runs would otherwise scale up to fill a wide panel.
+  g.style.maxWidth = Math.round(width * 1.15) + 'px'
   var pos = {}
   Object.keys(cols).forEach(function (c) {
     var list = cols[c]
@@ -203,7 +212,8 @@ function drawGraph() {
   for (var c = 0; c < colCount; c++) {
     var x = COL_GAP * (c + 0.5) * (width / (colCount * COL_GAP))
     var head = svg('text', { x: x, y: 18, 'text-anchor': 'middle', class: 'colhead' }, g)
-    head.textContent = c === 0 ? '코디네이터' : c === 1 ? '작업자' : '하위 작업자 ' + (c - 1)
+    var names = run.columnNames || ['코디네이터', '작업자', '하위 작업자']
+    head.textContent = c < names.length ? names[c] : names[names.length - 1] + ' ' + (c - names.length + 2)
     svg('line', { x1: x, y1: 26, x2: x, y2: height - 4, class: 'colline' }, g)
   }
 
@@ -237,7 +247,7 @@ function drawGraph() {
     svg('circle', { class: 'pulse', cx: 14, cy: 17, r: 6 }, node)
     svg('circle', { class: 'st', cx: 14, cy: 17, r: 4.5 }, node)
     svg('text', { x: 25, y: 21, class: 'name' }, node).textContent = cut(agent.name, 17)
-    svg('text', { x: 12, y: 39, class: 'meta' }, node).textContent = cut((agent.cli || 'agent') + (agent.branch ? ' · ' + agent.branch : ''), 26)
+    svg('text', { x: 12, y: 39, class: 'meta' }, node).textContent = cut((agent.cli || (agent.role === 'coordinator' ? 'coordinator' : 'agent')) + (agent.branch ? ' · ' + agent.branch : ''), 26)
     var now = svg('text', { x: 12, y: 56, class: 'now' }, node)
     var title = svg('title', {}, node)
     title.textContent = agent.name + (agent.branch ? '\n' + agent.branch : '') + (agent.live ? '' : '\n(터미널 종료됨)')
@@ -270,7 +280,7 @@ function render() {
   run.agents.forEach(function (agent) {
     var n = view.nodes[agent.id]
     var st = stateAt(run.agentStates[agent.id], t)
-    n.node.setAttribute('class', 'node s-' + st + (view.selected === agent.id ? ' sel' : '') + (n.live ? '' : ' gone'))
+    n.node.setAttribute('class', 'node s-' + st + ' r-' + (agent.role || 'worker') + (view.selected === agent.id ? ' sel' : '') + (n.live || agent.role === 'subagent' || st === 'working' || st === 'blocked' ? '' : ' gone'))
     var task = run.tasks.filter(function (k) { return k.owner === agent.id && stateAt(k.states, t) === 'working' }).pop()
     n.now.textContent = cut(STATE_LABEL[st] + (task ? ' · ' + task.title : ''), 26)
   })
@@ -284,6 +294,10 @@ function render() {
     E.group.setAttribute('visibility', 'visible')
     E.group.setAttribute('class', 'edge k-' + last.kind + (live ? ' live' : ' old'))
     E.path.setAttribute('marker-end', 'url(#arr-' + last.kind + ')')
+    // Busy runs bury the graph in labels; keep the ones that answer "who asked whom for what".
+    var ends = key.split('>')
+    var labelled = live || last.kind === 'dispatch' || last.kind === 'spawn' || ends.indexOf(view.selected) !== -1
+    ;[E.bg, E.lbl, E.cnt].forEach(function (n) { n.setAttribute('visibility', labelled ? 'inherit' : 'hidden') })
     var text = cut(last.text, 16)
     if (E.key !== text + evs.length) {
       E.key = text + evs.length
@@ -305,7 +319,7 @@ function render() {
 
   document.getElementById('feed').innerHTML = past.slice().reverse().map(function (e) {
     return '<li class="k-' + e.kind + (t - e.t < LIVE_WINDOW_MS ? ' fresh' : '') + '"><span class="t">' + clock(e.t) + '</span><span class="k">' + KIND_LABEL[e.kind] + '</span>' +
-      '<span class="body"><span class="who">' + esc(agentName(e.from)) + '</span> → <span class="who">' + esc(agentName(e.to)) + '</span> <span class="txt">' + esc(e.text) + '</span></span></li>'
+      '<span class="body"><span class="who">' + esc(cut(agentName(e.from), 28)) + '</span> → <span class="who">' + esc(cut(agentName(e.to), 28)) + '</span> <span class="txt">' + esc(e.text) + '</span></span></li>'
   }).join('') || '<li class="muted">아직 이벤트가 없습니다</li>'
 
   renderSide(past)
@@ -327,8 +341,8 @@ function renderSide(past) {
   var id = view.selected
   var agent = run.agents.filter(function (a) { return a.id === id })[0]
   var st = stateAt(run.agentStates[id], t)
-  var gave = past.filter(function (e) { return e.from === id && e.kind === 'dispatch' })
-  var got = past.filter(function (e) { return e.to === id && e.kind === 'dispatch' })
+  var gave = past.filter(function (e) { return e.from === id && (e.kind === 'dispatch' || e.kind === 'spawn') })
+  var got = past.filter(function (e) { return e.to === id && (e.kind === 'dispatch' || e.kind === 'spawn') })
   title.textContent = agent.name
   side.innerHTML = '<div class="detail"><div class="row"><span class="chip s-' + st + '"><span class="dot"></span>' + STATE_LABEL[st] + '</span>' +
     '<span class="chip">' + esc(agent.cli || 'agent') + '</span>' + (agent.branch ? '<span class="chip">' + esc(agent.branch) + '</span>' : '') +

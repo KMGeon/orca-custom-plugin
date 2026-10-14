@@ -7,6 +7,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { resolveOrcaCli } from '../lib/orca-cli.mjs'
 import { OrchestrationSnapshotter } from '../lib/orchestration-snapshot.mjs'
+import { FlowCollector } from '../lib/snapshot.mjs'
 import { renderPanel } from '../lib/panel-render.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -17,7 +18,8 @@ let data = null
 if (live) {
   const cli = resolveOrcaCli()
   if (!cli) throw new Error('orca CLI not found')
-  data = { version: 1, runs: await new OrchestrationSnapshotter(cli).snapshot(), error: null }
+  const { runs, warnings } = await new FlowCollector({ orcaSnapshotter: new OrchestrationSnapshotter(cli) }).collect()
+  data = { version: 2, runs, warnings, error: null }
 }
 const template = await readFile(join(root, 'panel', 'template.html'), 'utf8')
 await writeFile(out, renderPanel(template, data))
