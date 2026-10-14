@@ -4,7 +4,7 @@
   "type": "module",
   "description": "KMGeon의 Orca 플러그인 모음",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "test": "node --test 'plugins/*/test/*.test.mjs' 'scripts/test/*.test.mjs'",
