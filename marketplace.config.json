@@ -1,7 +1,7 @@
 {
   "name": "KMGeon Orca Plugins",
   "owner": "KMGeon",
-  "repositoryUrl": "git@github.com:KMGeon/orca-custom-plugin.git",
+  "repositoryUrl": "https://github.com/KMGeon/orca-custom-plugin.git",
   "plugins": {
     "agent-flow": {
       "listed": false,

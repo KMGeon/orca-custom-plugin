@@ -13,8 +13,7 @@ Orca 플러그인 모음 저장소입니다. 플러그인 하나가 `plugins/<id
 ### 1. 마켓플레이스 설치 (일반 플러그인)
 
 1. Orca → 설정 → 플러그인 → 마켓플레이스 추가에 저장소 주소를 넣습니다.
-   - 비공개 저장소: `git@github.com:KMGeon/orca-custom-plugin.git` (SSH 키 필요)
-   - 공개 저장소: `https://github.com/KMGeon/orca-custom-plugin.git`
+   - `https://github.com/KMGeon/orca-custom-plugin.git` (공개 저장소라 인증이 필요 없습니다)
 2. 목록에서 플러그인을 고르고 **설치** → **검토 및 활성화**를 누릅니다.
 
 마켓 목록은 `orca-marketplace.json`이고, 각 항목은 `<id>-v<version>` 태그를 가리킵니다. 태그는 `plugins/<id>` 폴더가 루트인 커밋입니다.

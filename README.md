@@ -10,9 +10,9 @@
 
 ### 마켓플레이스 (권장)
 
-1. Orca → 설정 → 플러그인 → 마켓플레이스 추가에 아래 주소를 넣습니다. 비공개 저장소라서 SSH 주소를 씁니다.
+1. Orca → 설정 → 플러그인 → 마켓플레이스 추가에 아래 주소를 넣습니다. 공개 저장소라서 HTTPS 주소로 바로 설치됩니다.
    ```
-   git@github.com:KMGeon/orca-custom-plugin.git
+   https://github.com/KMGeon/orca-custom-plugin.git
    ```
 2. 목록에서 플러그인을 골라 설치하고, 검토 및 활성화를 누릅니다.
 
