@@ -1,0 +1,10 @@
+{
+  "name": "orca-custom-plugin",
+  "private": true,
+  "type": "module",
+  "description": "KMGeon의 Orca 플러그인 모음",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "test": "node --test 'plugins/*/test/*.test.mjs'"
+  }
+}
