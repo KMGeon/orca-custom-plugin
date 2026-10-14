@@ -32,7 +32,7 @@ select:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 1px;
 .counts span { display: inline-flex; align-items: center; gap: 4px; }
 .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--c); }
 .c-working { --c: var(--working); } .c-blocked { --c: var(--blocked); } .c-done { --c: var(--done); }
-.c-failed { --c: var(--failed); } .c-idle { --c: var(--idle); }
+.c-failed { --c: var(--failed); } .c-idle, .c-unverifiable { --c: var(--idle); }
 #stage { position: relative; flex: 1 1 auto; min-height: 0; overflow: auto; }
 #stage svg { display: block; }
 .warn { position: absolute; left: 8px; bottom: 6px; right: 8px; font-size: 11px; color: var(--blocked); pointer-events: none; }
@@ -42,7 +42,8 @@ select:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 1px;
 .node rect.box { fill: var(--ui-card); stroke: var(--ui-line); stroke-width: 1.4; }
 .node.s-working rect.box { stroke: var(--working); }
 .node.s-blocked rect.box { stroke: var(--blocked); stroke-width: 2; }
-.node.s-done rect.box, .node.s-idle rect.box { opacity: .75; }
+.node.s-done rect.box, .node.s-idle rect.box, .node.s-unverifiable rect.box { opacity: .75; }
+.node.s-unverifiable rect.box { stroke-dasharray: 2 3; }
 .node.s-done rect.box { stroke: color-mix(in srgb, var(--done) 55%, var(--ui-line)); }
 .node.s-failed rect.box { stroke: var(--failed); }
 .node.r-subagent rect.box { stroke-dasharray: 4 3; }
@@ -54,14 +55,14 @@ select:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 1px;
 .node circle.st { fill: var(--c, var(--idle)); }
 .node .name { fill: var(--ui-fg); font-weight: 600; }
 .node .sub { fill: var(--ui-muted); }
-.node.s-done .name, .node.s-idle .name { fill: var(--ui-muted); }
+.node.s-done .name, .node.s-idle .name, .node.s-unverifiable .name { fill: var(--ui-muted); }
 
 .link { fill: none; stroke-width: 1.6; }
 .link.s-working { stroke: var(--working); stroke-dasharray: 6 5; animation: flow .8s linear infinite; stroke-width: 2; }
 .link.s-blocked { stroke: var(--blocked); stroke-dasharray: 3 4; animation: flow 1.6s linear infinite; stroke-width: 2; }
 .link.s-done { stroke: var(--done); opacity: .35; }
 .link.s-failed { stroke: var(--failed); opacity: .6; }
-.link.s-idle { stroke: var(--idle); opacity: .35; stroke-dasharray: 2 4; }
+.link.s-idle, .link.s-unverifiable { stroke: var(--idle); opacity: .35; stroke-dasharray: 2 4; }
 .pulse { fill: none; stroke-width: 1.8; stroke-dasharray: 5 5; animation: flow .7s linear infinite; }
 .k-ask { stroke: var(--blocked); } .k-reply, .k-result { stroke: var(--done); } .k-failed { stroke: var(--failed); }
 .k-message { stroke: var(--idle); } .k-handoff { stroke: var(--spawn); }
@@ -89,7 +90,7 @@ var DATA = /*__AGENT_FLOW_DATA__*/null
 
 var NS = 'http://www.w3.org/2000/svg'
 var RECENT_MS = 90 * 1000
-var STATE_LABEL = { working: '작업 중', blocked: '막힘', done: '완료', failed: '실패', idle: '대기' }
+var STATE_LABEL = { working: '작업 중', blocked: '막힘', done: '완료', failed: '실패', idle: '대기', unverifiable: '확인 불가' }
 var SOURCE_LABEL = { orca: 'Orca', 'claude-team': '팀', session: '세션' }
 var app = document.getElementById('app')
 var view = { run: null, selected: null, stage: null, svg: null, pop: null }
@@ -320,7 +321,9 @@ function drawNode(layer, agent, b, st, now) {
     var task = view.run.tasks.filter(function (k) { return k.owner === agent.id && stateAt(k.states, now) === 'working' }).pop()
     var line = st === 'working' || st === 'blocked'
       ? STATE_LABEL[st] + (since ? ' ' + elapsed(now - since) : '') + (task && task.title !== agent.name ? ' · ' + task.title : '')
-      : STATE_LABEL[st] + (agent.cli ? ' · ' + agent.cli : '')
+      : st === 'unverifiable'
+        ? '확인 불가 · 10분 넘게 소식 없음'
+        : STATE_LABEL[st] + (agent.cli ? ' · ' + agent.cli : '')
     var sub = svg('text', { class: 'sub', x: 10, y: b.h - Math.min(9, b.h * 0.17), 'font-size': 10.5 }, g)
     sub.textContent = fit(line, b.w - 16, '400 10.5px ' + family)
   }

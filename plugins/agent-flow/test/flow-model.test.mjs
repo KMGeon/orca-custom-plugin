@@ -81,7 +81,8 @@ test('messages map to ask/reply and drive blocked state', () => {
       { type: 'question', from_handle: 'dispatch:ctx_1', to_handle: 'run:run_1', subject: '아이콘 위치?', created_at: '2026-10-14T08:03:00Z' },
       { type: 'status', thread_id: 'th_1', from_handle: COORD, to_handle: 'term_a', subject: '하단', created_at: '2026-10-14T08:04:00Z' },
       { type: 'heartbeat', from_handle: 'term_a', to_handle: COORD, created_at: '2026-10-14T08:05:00Z' }
-    ]
+    ],
+    now: Date.parse('2026-10-14T08:06:00Z')
   })
   assert.deepEqual(flow.events.map((e) => e.kind), ['dispatch', 'ask', 'reply'])
   assert.deepEqual(flow.agentStates.term_a.map((s) => s[1]), ['working', 'blocked', 'working'])
@@ -134,4 +135,32 @@ test('taskHeadline prefers the deliverable and hides absolute paths', async () =
 test('taskHeadline drops punctuation left behind by a removed path', async () => {
   const { taskHeadline } = await import('../lib/flow-model.mjs')
   assert.equal(taskHeadline('Target: /a/b. Deep read-only review', ''), 'Deep read-only review')
+})
+
+test('a dispatched worker with no terminal, heartbeat, or message for 10 minutes becomes unverifiable', () => {
+  const dispatched = { status: 'dispatched', completed_at: null }
+  const base = { run, tasks: [task('T1', dispatched)], dispatches: new Map([['T1', dispatch('ctx_1', 'structworker_a', { status: 'dispatched' })]]) }
+  const start = Date.parse('2026-10-14T08:02:00Z')
+
+  const fresh = buildRunFlow({ ...base, now: start + 5 * 60_000 })
+  assert.equal(fresh.agentStates.structworker_a.at(-1)[1], 'working')
+  assert.equal(fresh.active, true)
+
+  const stale = buildRunFlow({ ...base, now: start + 30 * 60_000 })
+  assert.deepEqual(stale.agentStates.structworker_a.at(-1), [start + 10 * 60_000, 'unverifiable'])
+  assert.equal(stale.active, false)
+
+  const live = buildRunFlow({ ...base, now: start + 30 * 60_000, terminals: new Map([['structworker_a', { title: 'w' }]]) })
+  assert.equal(live.agentStates.structworker_a.at(-1)[1], 'working')
+})
+
+test('an agent whose terminal closed since the last poll is unverifiable immediately', () => {
+  const flow = buildRunFlow({
+    run,
+    tasks: [task('T1', { status: 'dispatched', completed_at: null })],
+    dispatches: new Map([['T1', dispatch('ctx_1', 'term_a', { status: 'dispatched' })]]),
+    goneHandles: new Set(['term_a']),
+    now: Date.parse('2026-10-14T08:03:00Z')
+  })
+  assert.equal(flow.agentStates.term_a.at(-1)[1], 'unverifiable')
 })

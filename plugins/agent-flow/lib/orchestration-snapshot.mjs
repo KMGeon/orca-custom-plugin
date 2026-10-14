@@ -11,6 +11,7 @@ export class OrchestrationSnapshotter {
     this.cliPath = cliPath
     this.run = run
     this.dispatchCache = new Map()
+    this.seenLive = new Set()
   }
 
   async snapshot() {
@@ -21,6 +22,8 @@ export class OrchestrationSnapshotter {
       cli(['terminal', 'list', '--limit', '500'])
     ])
     const terminalByHandle = new Map(terminals.map((terminal) => [terminal.handle, terminal]))
+    const goneHandles = new Set([...this.seenLive].filter((handle) => !terminalByHandle.has(handle)))
+    for (const handle of terminalByHandle.keys()) this.seenLive.add(handle)
     const recent = [...runs]
       .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
       .slice(0, RECENT_RUN_LIMIT)
@@ -39,7 +42,8 @@ export class OrchestrationSnapshotter {
           tasks,
           dispatches,
           messages: messages.filter((message) => message.run_id === run.id),
-          terminals: terminalByHandle
+          terminals: terminalByHandle,
+          goneHandles
         })
       )
     }

@@ -12,6 +12,9 @@ const MESSAGE_KIND = {
   merge_ready: 'message'
 }
 const TITLE_MAX = 120
+// Orca keeps a task `dispatched` until a worker reports, even if the worker was killed. Without a live
+// terminal, heartbeat, or message for this long, "working" becomes "unverifiable" instead of a guess.
+export const LIVENESS_STALE_MS = 10 * 60_000
 
 /** Orca mixes `YYYY-MM-DD HH:MM:SS` (UTC, no zone) with ISO strings. */
 export function parseTime(value) {
@@ -72,7 +75,7 @@ function shortBranch(branch) {
   return branch ? String(branch).replace(/^refs\/heads\//, '') : ''
 }
 
-export function buildRunFlow({ run, tasks = [], dispatches = new Map(), messages = [], terminals = new Map() }) {
+export function buildRunFlow({ run, tasks = [], dispatches = new Map(), messages = [], terminals = new Map(), goneHandles = new Set(), now = Date.now() }) {
   const coordinator = run.coordinator_handle ?? `run:${run.id}`
   const dispatchById = new Map([...dispatches.values()].map((d) => [d.id, d]))
   const resolveHandle = (handle) => {
@@ -177,6 +180,8 @@ export function buildRunFlow({ run, tasks = [], dispatches = new Map(), messages
   assignColumns(agents, events)
   const runStart = parseTime(run.created_at) ?? events[0]?.t ?? 0
   const agentStates = buildAgentStates(agents, events, coordinator, runStart, taskList)
+  markUnverifiable(agents, agentStates, events, dispatches, goneHandles, now)
+  const anyLive = Object.values(agentStates).some((list) => ['working', 'blocked'].includes(list.at(-1)?.[1]))
 
   return {
     id: run.id,
@@ -185,11 +190,32 @@ export function buildRunFlow({ run, tasks = [], dispatches = new Map(), messages
     columnNames: ['코디네이터', '작업자', '하위 작업자'],
     createdAt: runStart,
     updatedAt: Math.max(runStart, ...events.map((e) => e.t)),
-    active: taskList.some((task) => task.status !== 'done' && task.status !== 'failed'),
+    active: anyLive && taskList.some((task) => task.status !== 'done' && task.status !== 'failed'),
     agents: [...agents.values()],
     tasks: taskList,
     events,
     agentStates
+  }
+}
+
+function markUnverifiable(agents, agentStates, events, dispatches, goneHandles, now) {
+  const evidence = new Map()
+  const see = (id, t) => {
+    if (id && t !== null) evidence.set(id, Math.max(evidence.get(id) ?? 0, t))
+  }
+  for (const dispatch of dispatches.values()) see(dispatch.assignee_handle, parseTime(dispatch.last_heartbeat_at))
+  for (const event of events) {
+    see(event.from, event.t)
+    see(event.to, event.t)
+  }
+  for (const agent of agents.values()) {
+    const list = agentStates[agent.id]
+    const current = list.at(-1)
+    if (agent.live || !current || (current[1] !== 'working' && current[1] !== 'blocked')) continue
+    const lastSeen = Math.max(evidence.get(agent.id) ?? 0, current[0])
+    // A terminal we saw on an earlier poll has closed: no need to wait out the grace period.
+    if (goneHandles.has(agent.id)) list.push([Math.min(now, Math.max(lastSeen, current[0])), 'unverifiable'])
+    else if (now - lastSeen > LIVENESS_STALE_MS) list.push([lastSeen + LIVENESS_STALE_MS, 'unverifiable'])
   }
 }
 
