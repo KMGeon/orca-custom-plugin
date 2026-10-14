@@ -3,7 +3,7 @@
   "id": "agent-flow",
   "publisher": "kmgeon",
   "name": "Agent Flow",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Orca 오케스트레이션 run에서 어떤 에이전트가 누구에게 무엇을 시켰는지 흐름 그래프로 보여 줍니다.",
   "author": {
     "name": "KMGeon",

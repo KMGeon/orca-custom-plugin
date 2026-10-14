@@ -122,3 +122,16 @@ test('duplicate agent names get a numeric suffix', () => {
   })
   assert.deepEqual(flow.agents.filter((a) => a.role === 'worker').map((a) => a.name), ['reviewer', 'reviewer #2'])
 })
+
+test('taskHeadline prefers the deliverable and hides absolute paths', async () => {
+  const { taskHeadline } = await import('../lib/flow-model.mjs')
+  assert.equal(taskHeadline('Target: /Users/x/repo only, README', 'Target: /Users/x/repo only. Result: read-only analysis in Korean: purpose'), 'read-only analysis in Korean')
+  assert.equal(taskHeadline('Target: /a/b only; src/main/runtime, docs', ''), 'src/main/runtime, docs')
+  assert.equal(taskHeadline('Goal: fix ~/repo/src/app.ts crash', ''), 'fix crash')
+  assert.equal(taskHeadline('IPC 채널 추가', ''), 'IPC 채널 추가')
+})
+
+test('taskHeadline drops punctuation left behind by a removed path', async () => {
+  const { taskHeadline } = await import('../lib/flow-model.mjs')
+  assert.equal(taskHeadline('Target: /a/b. Deep read-only review', ''), 'Deep read-only review')
+})

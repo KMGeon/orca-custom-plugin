@@ -37,6 +37,26 @@ function clip(text, max = TITLE_MAX) {
   return trimmed.length > max ? `${trimmed.slice(0, max - 1)}…` : trimmed
 }
 
+/**
+ * Coordinators often write specs as `Target: /abs/path only; areas. Result: what to deliver`, and Orca
+ * derives the title from that first line. Prefer the deliverable, and never show absolute paths.
+ */
+export function taskHeadline(title, spec) {
+  const text = String(title ?? '').trim()
+  if (/^target\s*:/i.test(text)) {
+    const result = /\bResult\s*:\s*([^\n]+)/i.exec(String(spec ?? ''))?.[1]
+    if (result) return clip(result.split(/[:;.]/)[0])
+  }
+  return clip(
+    text
+      .replace(/^(target|goal|task)\s*:\s*/i, '')
+      .replace(/(?<![\w.-])~?\/[\w.@-]+(?:\/[\w.@-]+)+\/?/g, '')
+      .replace(/^[\s,;]*only\b[\s,;]*/i, '')
+      .replace(/^[\s,;.:-]+/, '')
+      .replace(/\s{2,}/g, ' ')
+  )
+}
+
 /** Terminal titles carry agent spinner glyphs (◐ ✳ ⠂); keep the readable part. */
 export function cleanTerminalTitle(title) {
   return String(title ?? '').replace(/^[^\p{L}\p{N}]+/u, '').trim()
@@ -112,7 +132,7 @@ export function buildRunFlow({ run, tasks = [], dispatches = new Map(), messages
     const creator = resolveHandle(task.created_by_terminal_handle) ?? coordinator
     const dispatch = dispatches.get(task.id)
     const owner = resolveHandle(dispatch?.assignee_handle) ?? null
-    const title = clip(task.task_title || task.display_name || task.spec)
+    const title = taskHeadline(task.task_title || task.display_name || clip(task.spec), task.spec) || clip(task.spec)
     const createdAt = parseTime(task.created_at)
     const dispatchedAt = parseTime(dispatch?.dispatched_at) ?? createdAt
     const completedAt = parseTime(task.completed_at) ?? parseTime(dispatch?.completed_at)

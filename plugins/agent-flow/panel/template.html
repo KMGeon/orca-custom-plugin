@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <style>
-/* Orca injects --background/--foreground/--border/... into panels; state colours stay mid-tone so both themes read. */
+/* Live board: one header row, then a graph laid out to the panel's own size.
+   Orca injects --background/--foreground/--border/... ; state colours stay mid-tone so both themes read. */
 :root {
   --working: #3b82f6;
   --blocked: #d97706;
@@ -11,7 +12,6 @@
   --failed: #dc2626;
   --idle: #8b93a5;
   --spawn: #8b5cf6;
-  --msg: #8b93a5;
   --ui-bg: var(--background, #16181d);
   --ui-fg: var(--foreground, #e4e6eb);
   --ui-muted: var(--muted-foreground, #9aa1b0);
@@ -23,85 +23,62 @@
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 * { box-sizing: border-box; }
-html, body { margin: 0; background: var(--ui-bg); color: var(--ui-fg); font: 13px/1.5 var(--font); }
-button, select, input { font: inherit; color: inherit; }
-.bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--ui-line); }
-select { background: var(--ui-chip); border: 1px solid var(--ui-line); border-radius: 6px; padding: 4px 6px; min-width: 0; flex: 1 1 200px; max-width: 100%; }
-.chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.chip { display: inline-flex; align-items: center; gap: 5px; padding: 1px 8px; border-radius: 999px; background: var(--ui-chip); color: var(--ui-muted); font-size: 11.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--c, var(--idle)); flex: none; }
-.s-working { --c: var(--working); } .s-blocked { --c: var(--blocked); } .s-done { --c: var(--done); }
-.s-failed { --c: var(--failed); } .s-idle { --c: var(--idle); }
-.objective { padding: 8px 12px 0; color: var(--ui-muted); font-size: 12px; overflow-wrap: anywhere; }
-.graph-scroll { overflow: auto; padding: 4px 0; }
-svg.graph { display: block; min-width: 560px; width: 100%; height: auto; margin: 0 auto; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: var(--ui-bg); color: var(--ui-fg); font: 13px/1.45 var(--font); }
+#app { height: 100%; display: flex; flex-direction: column; }
+.bar { flex: none; display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--ui-line); min-width: 0; }
+select { flex: 1 1 auto; min-width: 0; font: inherit; color: inherit; background: var(--ui-chip); border: 1px solid var(--ui-line); border-radius: 6px; padding: 3px 6px; }
+select:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 1px; }
+.counts { flex: none; display: flex; gap: 8px; font: 12px var(--mono); color: var(--ui-muted); font-variant-numeric: tabular-nums; }
+.counts span { display: inline-flex; align-items: center; gap: 4px; }
+.dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--c); }
+.c-working { --c: var(--working); } .c-blocked { --c: var(--blocked); } .c-done { --c: var(--done); }
+.c-failed { --c: var(--failed); } .c-idle { --c: var(--idle); }
+#stage { position: relative; flex: 1 1 auto; min-height: 0; overflow: auto; }
+#stage svg { display: block; }
+.warn { position: absolute; left: 8px; bottom: 6px; right: 8px; font-size: 11px; color: var(--blocked); pointer-events: none; }
+
 .node { cursor: pointer; }
 .node:focus { outline: none; }
-.node rect.box { fill: var(--ui-card); stroke: var(--ui-line); stroke-width: 1.5; }
+.node rect.box { fill: var(--ui-card); stroke: var(--ui-line); stroke-width: 1.4; }
 .node.s-working rect.box { stroke: var(--working); }
 .node.s-blocked rect.box { stroke: var(--blocked); stroke-width: 2; }
-.node.s-done rect.box { stroke: var(--done); }
+.node.s-done rect.box, .node.s-idle rect.box { opacity: .75; }
+.node.s-done rect.box { stroke: color-mix(in srgb, var(--done) 55%, var(--ui-line)); }
 .node.s-failed rect.box { stroke: var(--failed); }
-.node.sel rect.box, .node:focus-visible rect.box { stroke: var(--ui-accent); stroke-width: 2.5; }
-.node .name { font: 600 13px var(--font); fill: var(--ui-fg); }
-.node .meta { font: 10.5px var(--mono); fill: var(--ui-muted); }
-.node .now { font: 11px var(--font); fill: var(--ui-fg); }
+.node.r-subagent rect.box { stroke-dasharray: 4 3; }
+.node.sel rect.box, .node:focus-visible rect.box { stroke: var(--ui-accent); stroke-width: 2.4; }
+.node .glow { fill: none; stroke: var(--working); stroke-width: 6; opacity: 0; }
+.node.s-working .glow { animation: glow 2.4s ease-in-out infinite; }
+.node.s-blocked .glow { stroke: var(--blocked); animation: glow 1.2s ease-in-out infinite; }
+@keyframes glow { 0%, 100% { opacity: 0; } 50% { opacity: .22; } }
 .node circle.st { fill: var(--c, var(--idle)); }
-.node .pulse { fill: none; stroke: var(--c); opacity: 0; }
-.node.s-blocked .pulse { animation: ring 1.6s ease-out infinite; }
-.node.gone rect.box { stroke-dasharray: 4 3; }
-@keyframes ring { 0% { opacity: .7; r: 6; } 100% { opacity: 0; r: 15; } }
-.edge path { fill: none; stroke: var(--c); stroke-width: 1.8; }
-.edge.k-message path, .edge.k-reply path { stroke-dasharray: 5 5; }
-.edge.old path { opacity: .4; }
-.edge.live path { stroke-width: 2.4; stroke-dasharray: 7 6; animation: flow .7s linear infinite; }
-@keyframes flow { to { stroke-dashoffset: -13; } }
-.edge .lbl-bg { fill: var(--ui-bg); stroke: var(--c); stroke-width: 1; }
-.edge.old .lbl-bg { stroke: var(--ui-line); }
-.edge .lbl { font: 500 11px var(--font); fill: var(--ui-fg); }
-.edge.old .lbl { fill: var(--ui-muted); }
-.edge .cnt { font: 10px var(--mono); fill: var(--ui-muted); }
-.k-dispatch { --c: var(--ui-accent); } .k-message { --c: var(--msg); } .k-ask { --c: var(--blocked); }
-.k-reply { --c: var(--done); } .k-result { --c: var(--done); } .k-failed { --c: var(--failed); } .k-handoff { --c: var(--spawn); } .k-spawn { --c: var(--spawn); }
-.node.r-subagent rect.box { stroke-dasharray: 5 3; }
-.node.r-subagent.s-working rect.box { stroke: var(--spawn); }
-.warn { padding: 4px 12px 0; color: var(--blocked); font-size: 11.5px; }
-marker path { fill: var(--c); }
-.colhead { font: 600 10px var(--font); fill: var(--ui-muted); letter-spacing: .06em; }
-.colline { stroke: var(--ui-line); stroke-dasharray: 2 4; }
-.player { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--ui-line); border-bottom: 1px solid var(--ui-line); }
-.player button { background: var(--ui-chip); border: 1px solid var(--ui-line); border-radius: 6px; padding: 3px 10px; cursor: pointer; }
-.player button:hover { border-color: var(--ui-accent); }
-.player input[type=range] { flex: 1 1 160px; min-width: 0; accent-color: var(--ui-accent); }
-.clock { font: 12px var(--mono); color: var(--ui-muted); font-variant-numeric: tabular-nums; }
-.live-tag { font-size: 11px; color: var(--done); }
-.live-tag[hidden] { display: none; }
-button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 1px; }
-.lower { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
-.lower > section { padding: 10px 12px; min-width: 0; }
-.lower h3 { margin: 0 0 6px; font-size: 11px; font-weight: 600; color: var(--ui-muted); letter-spacing: .05em; }
-.feed { list-style: none; margin: 0; padding: 0; max-height: 240px; overflow-y: auto; }
-.feed li { display: grid; grid-template-columns: 40px 44px minmax(0, 1fr); gap: 6px; padding: 3px 4px; border-radius: 5px; align-items: baseline; }
-.feed li.fresh { background: var(--ui-chip); }
-.feed li.muted { display: block; }
-.feed .t { font: 11px var(--mono); color: var(--ui-muted); }
-.feed .k { font-size: 10.5px; font-weight: 600; color: var(--c); }
-.feed .body { overflow-wrap: anywhere; }
-.feed .who { font-weight: 600; }
-.feed .txt, .muted { color: var(--ui-muted); }
-table { width: 100%; border-collapse: collapse; }
-th { text-align: left; font-size: 10.5px; font-weight: 600; color: var(--ui-muted); padding: 3px 4px; border-bottom: 1px solid var(--ui-line); }
-td { padding: 4px; border-bottom: 1px solid var(--ui-line); vertical-align: top; overflow-wrap: anywhere; }
-td.mono { font: 11px var(--mono); white-space: nowrap; }
-.detail { display: flex; flex-direction: column; gap: 6px; }
-.detail .row { display: flex; flex-wrap: wrap; gap: 6px; }
-.empty { padding: 28px 16px; text-align: center; color: var(--ui-muted); }
+.node .name { fill: var(--ui-fg); font-weight: 600; }
+.node .sub { fill: var(--ui-muted); }
+.node.s-done .name, .node.s-idle .name { fill: var(--ui-muted); }
+
+.link { fill: none; stroke-width: 1.6; }
+.link.s-working { stroke: var(--working); stroke-dasharray: 6 5; animation: flow .8s linear infinite; stroke-width: 2; }
+.link.s-blocked { stroke: var(--blocked); stroke-dasharray: 3 4; animation: flow 1.6s linear infinite; stroke-width: 2; }
+.link.s-done { stroke: var(--done); opacity: .35; }
+.link.s-failed { stroke: var(--failed); opacity: .6; }
+.link.s-idle { stroke: var(--idle); opacity: .35; stroke-dasharray: 2 4; }
+.pulse { fill: none; stroke-width: 1.8; stroke-dasharray: 5 5; animation: flow .7s linear infinite; }
+.k-ask { stroke: var(--blocked); } .k-reply, .k-result { stroke: var(--done); } .k-failed { stroke: var(--failed); }
+.k-message { stroke: var(--idle); } .k-handoff { stroke: var(--spawn); }
+@keyframes flow { to { stroke-dashoffset: -22; } }
+
+.pop { position: absolute; z-index: 5; max-width: min(320px, calc(100% - 16px)); background: var(--ui-card); border: 1px solid var(--ui-line); border-radius: 8px; padding: 10px 12px; box-shadow: 0 8px 24px rgb(0 0 0 / .3); font-size: 12.5px; display: flex; flex-direction: column; gap: 6px; }
+.pop[hidden] { display: none; }
+.pop .t { font-weight: 600; font-size: 13px; overflow-wrap: anywhere; }
+.pop .m { color: var(--ui-muted); font: 11.5px var(--mono); overflow-wrap: anywhere; }
+.pop .row { display: flex; align-items: center; gap: 6px; }
+.pop ul { margin: 0; padding-left: 16px; color: var(--ui-muted); }
+.pop li { overflow-wrap: anywhere; }
+.pop b { font-weight: 600; color: var(--ui-fg); }
+.empty { margin: auto; padding: 24px 16px; text-align: center; color: var(--ui-muted); max-width: 420px; }
 .empty b { display: block; color: var(--ui-fg); margin-bottom: 4px; }
 .empty code { font: 11.5px var(--mono); background: var(--ui-chip); padding: 1px 5px; border-radius: 4px; }
-.legend { display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 6px 12px; font-size: 11px; color: var(--ui-muted); }
-.legend span { display: inline-flex; align-items: center; gap: 5px; }
-.legend i { width: 16px; border-top: 2px solid var(--c); }
-@media (prefers-reduced-motion: reduce) { .edge.live path, .node.s-blocked .pulse { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .link, .pulse, .node .glow { animation: none !important; } }
 </style>
 </head>
 <body>
@@ -111,265 +88,286 @@ td.mono { font: 11px var(--mono); white-space: nowrap; }
 var DATA = /*__AGENT_FLOW_DATA__*/null
 
 var NS = 'http://www.w3.org/2000/svg'
-var NODE_W = 172, NODE_H = 64, COL_GAP = 300, ROW_GAP = 104, TOP = 40
-var LIVE_WINDOW_MS = 90 * 1000
-var KIND_LABEL = { dispatch: '시킴', spawn: '생성', message: '메시지', ask: '질문', reply: '답변', result: '완료', failed: '실패', handoff: '핸드오프' }
-var SOURCE_LABEL = { orca: 'Orca', 'claude-team': '팀', session: '세션' }
+var RECENT_MS = 90 * 1000
 var STATE_LABEL = { working: '작업 중', blocked: '막힘', done: '완료', failed: '실패', idle: '대기' }
-var LEGEND = ['dispatch', 'spawn', 'ask', 'reply', 'result', 'failed', 'message', 'handoff']
-
+var SOURCE_LABEL = { orca: 'Orca', 'claude-team': '팀', session: '세션' }
 var app = document.getElementById('app')
-var view = { run: null, t: 0, selected: null, timer: null }
+var view = { run: null, selected: null, stage: null, svg: null, pop: null }
+var measureCtx = document.createElement('canvas').getContext('2d')
 
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] }) }
-function cut(s, n) { s = String(s || ''); return s.length > n ? s.slice(0, n - 1) + '…' : s }
 function svg(tag, attrs, parent) {
   var node = document.createElementNS(NS, tag)
   for (var k in attrs) node.setAttribute(k, attrs[k])
   if (parent) parent.appendChild(node)
   return node
 }
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)) }
 function stateAt(list, t) { var s = 'idle'; (list || []).forEach(function (p) { if (p[0] <= t) s = p[1] }); return s }
-function clock(ms) { var d = new Date(ms); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') }
+function stateSince(list, t) { var at = null; (list || []).forEach(function (p) { if (p[0] <= t) at = p[0] }); return at }
+function elapsed(ms) {
+  var m = Math.max(0, Math.round(ms / 60000))
+  return m < 1 ? '방금' : m < 60 ? m + '분째' : Math.floor(m / 60) + '시간 ' + (m % 60) + '분째'
+}
 function ago(ms) {
   var m = Math.round((Date.now() - ms) / 60000)
-  if (m < 1) return '방금'
-  if (m < 60) return m + '분 전'
-  if (m < 1440) return Math.round(m / 60) + '시간 전'
-  return Math.round(m / 1440) + '일 전'
+  return m < 1 ? '방금' : m < 60 ? m + '분 전' : m < 1440 ? Math.round(m / 60) + '시간 전' : Math.round(m / 1440) + '일 전'
+}
+/** Truncates to the pixel width the box actually has, so Korean and Latin both fit. */
+function fit(text, px, font) {
+  measureCtx.font = font
+  text = String(text || '')
+  if (measureCtx.measureText(text).width <= px) return text
+  var lo = 0, hi = text.length
+  while (lo < hi) {
+    var mid = (lo + hi + 1) >> 1
+    if (measureCtx.measureText(text.slice(0, mid) + '…').width <= px) lo = mid; else hi = mid - 1
+  }
+  return lo > 0 ? text.slice(0, lo) + '…' : ''
 }
 
 function boot() {
-  if (!DATA) return emptyState('데이터를 기다리는 중', '에이전트 상태가 바뀌거나 명령 팔레트에서 <code>Agent Flow: 새로고침</code>을 실행하면 그려집니다.<br><br>이 화면이 계속 보이면 플러그인을 <b>설정 → 플러그인 → 개발</b>의 경로로 설치했는지 확인하세요. 일반 설치(복사본)에서는 갱신되지 않습니다.')
-  if (DATA.error) return emptyState('데이터를 읽지 못했습니다', esc(DATA.error))
-  if (!DATA.runs.length) return emptyState('보여 줄 흐름이 없습니다', 'Orca 오케스트레이션 run, 서브에이전트를 쓴 Claude 세션, Claude 에이전트 팀이 생기면 여기에 나타납니다.')
-  var requested = DATA.runs.filter(function (r) { return '#' + r.id === location.hash })[0]
-  var active = DATA.runs.filter(function (r) { return r.active && r.source === 'orca' })[0] || DATA.runs.filter(function (r) { return r.active })[0]
-  selectRun((requested || active || DATA.runs[0]).id)
+  if (!DATA) return empty('데이터를 기다리는 중', '에이전트 상태가 바뀌거나 명령 팔레트에서 <code>Agent Flow: 새로고침</code>을 실행하면 그려집니다.<br><br>이 화면이 계속 보이면 플러그인을 <b>설정 → 플러그인 → 개발</b>의 경로로 설치했는지 확인하세요. 일반 설치(복사본)에서는 갱신되지 않습니다.')
+  if (DATA.error) return empty('데이터를 읽지 못했습니다', esc(DATA.error))
+  if (!DATA.runs.length) return empty('보여 줄 흐름이 없습니다', 'Orca 오케스트레이션 run, 서브에이전트를 쓴 Claude 세션, Claude 에이전트 팀이 생기면 여기에 나타납니다.')
+  var pick = DATA.runs.filter(function (r) { return '#' + r.id === location.hash })[0] ||
+    DATA.runs.filter(function (r) { return r.active && r.source === 'orca' })[0] ||
+    DATA.runs.filter(function (r) { return r.active })[0] || DATA.runs[0]
+  app.innerHTML =
+    '<div class="bar"><select id="run" aria-label="흐름 선택"></select><div class="counts" id="counts"></div></div>' +
+    '<div id="stage"><div class="pop" id="pop" hidden></div></div>'
+  var select = document.getElementById('run')
+  select.innerHTML = DATA.runs.map(function (r) {
+    return '<option value="' + esc(r.id) + '">' + (r.active ? '● ' : '') + '[' + (SOURCE_LABEL[r.source] || 'Orca') + '] ' + esc(r.title) + ' · ' + ago(r.updatedAt) + '</option>'
+  }).join('')
+  select.value = pick.id
+  select.addEventListener('change', function () { selectRun(select.value) })
+  view.stage = document.getElementById('stage')
+  view.pop = document.getElementById('pop')
+  view.stage.addEventListener('click', function (e) { if (!e.target.closest('.node') && !e.target.closest('.pop')) closePop() })
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closePop() })
+  var frame = 0
+  new ResizeObserver(function () { cancelAnimationFrame(frame); frame = requestAnimationFrame(draw) }).observe(view.stage)
+  // Elapsed times keep moving between data refreshes.
+  setInterval(draw, 30000)
+  selectRun(pick.id)
 }
 
-function emptyState(title, body) { app.innerHTML = '<div class="empty"><b>' + esc(title) + '</b>' + body + '</div>' }
+function empty(title, body) { app.innerHTML = '<div class="empty"><b>' + esc(title) + '</b>' + body + '</div>' }
 
 function selectRun(id) {
-  stop()
   view.run = DATA.runs.filter(function (r) { return r.id === id })[0]
   view.selected = null
-  view.t = view.run.updatedAt
-  layout()
-  render()
+  if (view.pop) view.pop.hidden = true
+  draw()
 }
 
-function layout() {
-  var run = view.run
-  app.innerHTML =
-    '<div class="bar"><select id="run" aria-label="Run 선택">' +
-    DATA.runs.map(function (r) {
-      return '<option value="' + esc(r.id) + '"' + (r.id === run.id ? ' selected' : '') + '>' + (r.active ? '● ' : '') + '[' + (SOURCE_LABEL[r.source] || 'Orca') + '] ' + esc(cut(r.title, 56)) + ' · ' + ago(r.updatedAt) + '</option>'
-    }).join('') +
-    '</select><div class="chips" id="summary"></div></div>' +
-    '<div class="objective">' + esc(run.title) + '</div>' +
-    ((DATA.warnings || []).length ? '<div class="warn">일부 데이터를 읽지 못했습니다: ' + esc(DATA.warnings.join(' / ')) + '</div>' : '') +
-    '<div class="graph-scroll"><svg class="graph" id="graph" role="img" aria-label="에이전트 위임 흐름"></svg></div>' +
-    '<div class="legend">' + LEGEND.map(function (k) { return '<span class="k-' + k + '"><i></i>' + KIND_LABEL[k] + '</span>' }).join('') + '</div>' +
-    '<div class="player"><button id="play" type="button">▶ 재생</button>' +
-    '<input type="range" id="scrub" aria-label="재생 위치" min="' + run.createdAt + '" max="' + run.updatedAt + '" step="1000" value="' + view.t + '">' +
-    '<span class="clock" id="clock"></span><span class="live-tag" id="live">● 최신</span></div>' +
-    '<div class="lower"><section><h3>활동</h3><ol class="feed" id="feed"></ol></section>' +
-    '<section><h3 id="side-title">태스크</h3><div id="side"></div></section></div>'
-
-  document.getElementById('run').addEventListener('change', function (e) { selectRun(e.target.value) })
-  document.getElementById('scrub').addEventListener('input', function (e) { stop(); view.t = Number(e.target.value); render() })
-  document.getElementById('play').addEventListener('click', togglePlay)
-  drawGraph()
+/** Parent of each agent = whoever first dispatched or spawned it. */
+function treeOf(run) {
+  var parent = {}
+  run.events.forEach(function (e) {
+    if ((e.kind === 'dispatch' || e.kind === 'spawn') && parent[e.to] === undefined && e.from !== e.to) parent[e.to] = e.from
+  })
+  return parent
 }
 
-function drawGraph() {
+function draw() {
   var run = view.run
-  var g = document.getElementById('graph')
-  var cols = {}
-  run.agents.forEach(function (a) { (cols[a.col] = cols[a.col] || []).push(a) })
-  var colCount = Math.max.apply(null, run.agents.map(function (a) { return a.col })) + 1
-  var maxRows = Math.max.apply(null, Object.keys(cols).map(function (c) { return cols[c].length }))
-  var width = Math.max(560, colCount * COL_GAP)
-  var height = TOP + maxRows * ROW_GAP + 10
-  g.setAttribute('viewBox', '0 0 ' + width + ' ' + height)
-  // Small runs would otherwise scale up to fill a wide panel.
-  g.style.maxWidth = Math.round(width * 1.15) + 'px'
-  var pos = {}
-  Object.keys(cols).forEach(function (c) {
-    var list = cols[c]
-    var x = COL_GAP * (Number(c) + 0.5) * (width / (colCount * COL_GAP))
-    var offset = (maxRows - list.length) * ROW_GAP / 2
-    list.forEach(function (a, i) { pos[a.id] = { x: x, y: TOP + offset + i * ROW_GAP + ROW_GAP / 2 } })
-  })
-  view.pos = pos
+  if (!run || !view.stage) return
+  var now = Math.max(Date.now(), run.updatedAt)
+  var W = view.stage.clientWidth, H = view.stage.clientHeight
+  if (!W || !H) return
+  var vertical = W < 560 || W < H * 0.9
+  var parent = treeOf(run)
 
-  var defs = svg('defs', {}, g)
-  LEGEND.forEach(function (k) {
-    var m = svg('marker', { id: 'arr-' + k, viewBox: '0 0 10 10', refX: '8', refY: '5', markerWidth: '7', markerHeight: '7', orient: 'auto-start-reverse', class: 'k-' + k }, defs)
-    svg('path', { d: 'M0,0 L10,5 L0,10 z' }, m)
+  var levels = {}
+  var order = {}
+  run.agents.forEach(function (a, i) { order[a.id] = i })
+  run.agents.forEach(function (a) { (levels[a.col] = levels[a.col] || []).push(a) })
+  var levelKeys = Object.keys(levels).map(Number).sort(function (a, b) { return a - b })
+  // Keep siblings next to each other under their parent to limit crossings.
+  levelKeys.forEach(function (k) {
+    levels[k].sort(function (a, b) {
+      var pa = order[parent[a.id]] === undefined ? -1 : order[parent[a.id]]
+      var pb = order[parent[b.id]] === undefined ? -1 : order[parent[b.id]]
+      return pa - pb || order[a.id] - order[b.id]
+    })
   })
-  for (var c = 0; c < colCount; c++) {
-    var x = COL_GAP * (c + 0.5) * (width / (colCount * COL_GAP))
-    var head = svg('text', { x: x, y: 18, 'text-anchor': 'middle', class: 'colhead' }, g)
-    var names = run.columnNames || ['코디네이터', '작업자', '하위 작업자']
-    head.textContent = c < names.length ? names[c] : names[names.length - 1] + ' ' + (c - names.length + 2)
-    svg('line', { x1: x, y1: 26, x2: x, y2: height - 4, class: 'colline' }, g)
+
+  var pad = 14, gap = 8, lineGap = 8
+  var crossLen = vertical ? W : H
+  var mainLen = vertical ? H : W
+  var levelGap = vertical ? 34 : 54, levelGapMax = vertical ? 140 : 160
+  var crossMin = vertical ? 96 : 30, crossMax = vertical ? 230 : 66
+  var mainMin = vertical ? 26 : 104, mainMax = vertical ? 64 : 230
+
+  var plan = levelKeys.map(function (k) {
+    var n = levels[k].length
+    var perLine = Math.max(1, Math.min(n, Math.floor((crossLen - 2 * pad + gap) / (crossMin + gap))))
+    return { nodes: levels[k], perLine: perLine, lines: Math.ceil(n / perLine) }
+  })
+  var totalLines = plan.reduce(function (s, p) { return s + p.lines }, 0)
+  var fixed = (plan.length - 1) * levelGap + (totalLines - plan.length) * lineGap
+  var mainItem = clamp((mainLen - 2 * pad - fixed) / totalLines, mainMin, mainMax)
+  // Small runs spread out to use the panel instead of huddling in the middle.
+  if (plan.length > 1) {
+    var spare = mainLen - 2 * pad - (totalLines * mainItem + fixed)
+    if (spare > 0) {
+      var grow = Math.min(levelGapMax - levelGap, spare * 0.7 / (plan.length - 1))
+      levelGap += grow
+      fixed += grow * (plan.length - 1)
+    }
   }
+  var used = totalLines * mainItem + fixed
+  var cursor = pad + Math.max(0, (mainLen - 2 * pad - used) / 2)
 
-  var edgeLayer = svg('g', {}, g)
-  var nodeLayer = svg('g', {}, g)
-  var pairs = {}
-  run.events.forEach(function (e) { pairs[e.from + '>' + e.to] = true })
-  view.edges = {}
-  Object.keys(pairs).forEach(function (key) {
-    var ends = key.split('>'), a = pos[ends[0]], b = pos[ends[1]]
-    if (!a || !b) return
-    var len = Math.hypot(b.x - a.x, b.y - a.y) || 1
-    var nx = -(b.y - a.y) / len, ny = (b.x - a.x) / len
-    var bend = pairs[ends[1] + '>' + ends[0]] ? 30 : 12
-    var ctl = { x: (a.x + b.x) / 2 + nx * bend, y: (a.y + b.y) / 2 + ny * bend }
-    var s = clip(a, ctl), t = clip(b, ctl)
-    var group = svg('g', { class: 'edge' }, edgeLayer)
-    var path = svg('path', { d: 'M' + s.x + ',' + s.y + ' Q' + ctl.x + ',' + ctl.y + ' ' + t.x + ',' + t.y }, group)
-    var lx = 0.25 * s.x + 0.5 * ctl.x + 0.25 * t.x, ly = 0.25 * s.y + 0.5 * ctl.y + 0.25 * t.y
-    var bg = svg('rect', { rx: 4, class: 'lbl-bg' }, group)
-    var lbl = svg('text', { x: lx, y: ly + 4, 'text-anchor': 'middle', class: 'lbl' }, group)
-    var cnt = svg('text', { class: 'cnt' }, group)
-    view.edges[key] = { group: group, path: path, bg: bg, lbl: lbl, cnt: cnt, ly: ly, key: null }
+  var boxes = {}
+  plan.forEach(function (p, li) {
+    var crossItem = clamp((crossLen - 2 * pad - (p.perLine - 1) * gap) / p.perLine, crossMin, crossMax)
+    for (var line = 0; line < p.lines; line++) {
+      var items = p.nodes.slice(line * p.perLine, (line + 1) * p.perLine)
+      var span = items.length * crossItem + (items.length - 1) * gap
+      var start = Math.max(pad, (crossLen - span) / 2)
+      items.forEach(function (a, i) {
+        var c = start + i * (crossItem + gap)
+        boxes[a.id] = vertical ? { x: c, y: cursor, w: crossItem, h: mainItem } : { x: cursor, y: c, w: mainItem, h: crossItem }
+      })
+      cursor += mainItem + (line < p.lines - 1 ? lineGap : 0)
+    }
+    if (li < plan.length - 1) cursor += levelGap
+  })
+  var contentMain = Math.max(mainLen, cursor + pad)
+
+  var root = svg('svg', vertical
+    ? { width: W, height: contentMain, viewBox: '0 0 ' + W + ' ' + contentMain, role: 'img', 'aria-label': '에이전트 흐름' }
+    : { width: contentMain, height: H, viewBox: '0 0 ' + contentMain + ' ' + H, role: 'img', 'aria-label': '에이전트 흐름' })
+  var linkLayer = svg('g', {}, root)
+  var pulseLayer = svg('g', {}, root)
+  var nodeLayer = svg('g', {}, root)
+
+  run.agents.forEach(function (a) {
+    var pb = boxes[parent[a.id]], cb = boxes[a.id]
+    if (!pb || !cb) return
+    svg('path', { d: treePath(pb, cb, vertical), class: 'link s-' + stateAt(run.agentStates[a.id], now) }, linkLayer)
+  })
+  // Anything said in the last 90 seconds that is not a tree edge gets a temporary moving line.
+  var seen = {}
+  run.events.filter(function (e) { return now - e.t < RECENT_MS && e.kind !== 'dispatch' && e.kind !== 'spawn' }).reverse().forEach(function (e) {
+    var key = e.from + '>' + e.to
+    if (seen[key] || !boxes[e.from] || !boxes[e.to]) return
+    seen[key] = true
+    var fade = 1 - ((now - e.t) / RECENT_MS) * 0.7
+    svg('path', { d: chordPath(boxes[e.from], boxes[e.to]), class: 'pulse k-' + e.kind, opacity: fade.toFixed(2) }, pulseLayer)
   })
 
-  view.nodes = {}
-  run.agents.forEach(function (agent) {
-    var p = pos[agent.id]
-    var node = svg('g', { class: 'node', tabindex: '0', role: 'button', 'aria-label': agent.name + ' 상세', transform: 'translate(' + (p.x - NODE_W / 2) + ',' + (p.y - NODE_H / 2) + ')' }, nodeLayer)
-    svg('rect', { class: 'box', width: NODE_W, height: NODE_H, rx: 8 }, node)
-    svg('circle', { class: 'pulse', cx: 14, cy: 17, r: 6 }, node)
-    svg('circle', { class: 'st', cx: 14, cy: 17, r: 4.5 }, node)
-    svg('text', { x: 25, y: 21, class: 'name' }, node).textContent = cut(agent.name, 17)
-    svg('text', { x: 12, y: 39, class: 'meta' }, node).textContent = cut((agent.cli || (agent.role === 'coordinator' ? 'coordinator' : 'agent')) + (agent.branch ? ' · ' + agent.branch : ''), 26)
-    var now = svg('text', { x: 12, y: 56, class: 'now' }, node)
-    var title = svg('title', {}, node)
-    title.textContent = agent.name + (agent.branch ? '\n' + agent.branch : '') + (agent.live ? '' : '\n(터미널 종료됨)')
-    function pick() { view.selected = view.selected === agent.id ? null : agent.id; render() }
-    node.addEventListener('click', pick)
-    node.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick() } })
-    view.nodes[agent.id] = { node: node, now: now, live: agent.live }
+  var counts = { working: 0, blocked: 0, done: 0 }
+  run.agents.forEach(function (a) {
+    if (!boxes[a.id]) return
+    var st = stateAt(run.agentStates[a.id], now)
+    if (st in counts) counts[st]++
+    drawNode(nodeLayer, a, boxes[a.id], st, now)
   })
+  document.getElementById('counts').innerHTML =
+    '<span class="c-working" title="작업 중"><i class="dot"></i>' + counts.working + '</span>' +
+    '<span class="c-blocked" title="막힘"><i class="dot"></i>' + counts.blocked + '</span>' +
+    '<span class="c-done" title="완료"><i class="dot"></i>' + counts.done + '</span>'
+
+  if (view.svg) view.stage.replaceChild(root, view.svg); else view.stage.insertBefore(root, view.pop)
+  view.svg = root
+  if ((DATA.warnings || []).length && !view.stage.querySelector('.warn')) {
+    var warn = document.createElement('div')
+    warn.className = 'warn'
+    warn.textContent = '일부 데이터를 읽지 못했습니다: ' + DATA.warnings.join(' / ')
+    view.stage.appendChild(warn)
+  }
+  if (view.selected && boxes[view.selected]) openPop(view.selected, boxes[view.selected])
 }
 
-function clip(from, to) {
-  var dx = to.x - from.x, dy = to.y - from.y
-  var s = Math.min((NODE_W / 2 + 5) / Math.abs(dx || 1e-6), (NODE_H / 2 + 5) / Math.abs(dy || 1e-6), 1)
-  return { x: from.x + dx * s, y: from.y + dy * s }
+function treePath(p, c, vertical) {
+  if (vertical) {
+    var x1 = p.x + p.w / 2, y1 = p.y + p.h, x2 = c.x + c.w / 2, y2 = c.y, my = (y1 + y2) / 2
+    return 'M' + x1 + ',' + y1 + ' C' + x1 + ',' + my + ' ' + x2 + ',' + my + ' ' + x2 + ',' + y2
+  }
+  var ax = p.x + p.w, ay = p.y + p.h / 2, bx = c.x, by = c.y + c.h / 2, mx = (ax + bx) / 2
+  return 'M' + ax + ',' + ay + ' C' + mx + ',' + ay + ' ' + mx + ',' + by + ' ' + bx + ',' + by
 }
 
-function agentName(id) {
+function chordPath(a, b) {
+  var ax = a.x + a.w / 2, ay = a.y + a.h / 2, bx = b.x + b.w / 2, by = b.y + b.h / 2
+  var len = Math.hypot(bx - ax, by - ay) || 1
+  var bend = Math.min(60, len * 0.25)
+  var cx = (ax + bx) / 2 - (by - ay) / len * bend, cy = (ay + by) / 2 + (bx - ax) / len * bend
+  return 'M' + ax + ',' + ay + ' Q' + cx + ',' + cy + ' ' + bx + ',' + by
+}
+
+function drawNode(layer, agent, b, st, now) {
+  var g = svg('g', {
+    class: 'node s-' + st + ' c-' + st + ' r-' + (agent.role || 'worker') + (view.selected === agent.id ? ' sel' : ''),
+    transform: 'translate(' + b.x + ',' + b.y + ')',
+    tabindex: '0', role: 'button', 'aria-label': agent.name + ' ' + STATE_LABEL[st]
+  }, layer)
+  svg('rect', { class: 'glow', x: -2, y: -2, width: b.w + 4, height: b.h + 4, rx: 9 }, g)
+  svg('rect', { class: 'box', width: b.w, height: b.h, rx: 7 }, g)
+  var compact = b.h < 40
+  var family = getComputedStyle(document.body).fontFamily
+  var nameSize = b.w < 120 || compact ? 11.5 : 12.5
+  var cy = compact ? b.h / 2 : Math.min(15, b.h * 0.34)
+  svg('circle', { class: 'st', cx: 11, cy: cy, r: 4 }, g)
+  var name = svg('text', { class: 'name', x: 21, y: cy + nameSize * 0.36, 'font-size': nameSize }, g)
+  name.textContent = fit(agent.name, b.w - 28, '600 ' + nameSize + 'px ' + family)
+  if (!compact) {
+    var since = stateSince(view.run.agentStates[agent.id], now)
+    var task = view.run.tasks.filter(function (k) { return k.owner === agent.id && stateAt(k.states, now) === 'working' }).pop()
+    var line = st === 'working' || st === 'blocked'
+      ? STATE_LABEL[st] + (since ? ' ' + elapsed(now - since) : '') + (task && task.title !== agent.name ? ' · ' + task.title : '')
+      : STATE_LABEL[st] + (agent.cli ? ' · ' + agent.cli : '')
+    var sub = svg('text', { class: 'sub', x: 10, y: b.h - Math.min(9, b.h * 0.17), 'font-size': 10.5 }, g)
+    sub.textContent = fit(line, b.w - 16, '400 10.5px ' + family)
+  }
+  function pick(e) {
+    e.stopPropagation()
+    view.selected = view.selected === agent.id ? null : agent.id
+    if (!view.selected) view.pop.hidden = true
+    draw()
+  }
+  g.addEventListener('click', pick)
+  g.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(e) } })
+}
+
+function nameOf(id) {
   var a = view.run.agents.filter(function (x) { return x.id === id })[0]
   return a ? a.name : id
 }
 
-function render() {
-  var run = view.run, t = view.t
-  var past = run.events.filter(function (e) { return e.t <= t })
-  var atEnd = t >= run.updatedAt
-  document.getElementById('scrub').value = t
-  document.getElementById('clock').textContent = clock(t)
-  document.getElementById('live').hidden = !atEnd
-
-  run.agents.forEach(function (agent) {
-    var n = view.nodes[agent.id]
-    var st = stateAt(run.agentStates[agent.id], t)
-    n.node.setAttribute('class', 'node s-' + st + ' r-' + (agent.role || 'worker') + (view.selected === agent.id ? ' sel' : '') + (n.live || agent.role === 'subagent' || st === 'working' || st === 'blocked' ? '' : ' gone'))
-    var task = run.tasks.filter(function (k) { return k.owner === agent.id && stateAt(k.states, t) === 'working' }).pop()
-    n.now.textContent = cut(STATE_LABEL[st] + (task ? ' · ' + task.title : ''), 26)
-  })
-
-  Object.keys(view.edges).forEach(function (key) {
-    var E = view.edges[key]
-    var evs = past.filter(function (e) { return e.from + '>' + e.to === key })
-    if (!evs.length) { E.group.setAttribute('visibility', 'hidden'); return }
-    var last = evs[evs.length - 1]
-    var live = t - last.t < LIVE_WINDOW_MS
-    E.group.setAttribute('visibility', 'visible')
-    E.group.setAttribute('class', 'edge k-' + last.kind + (live ? ' live' : ' old'))
-    E.path.setAttribute('marker-end', 'url(#arr-' + last.kind + ')')
-    // Busy runs bury the graph in labels; keep the ones that answer "who asked whom for what".
-    var ends = key.split('>')
-    var labelled = live || last.kind === 'dispatch' || last.kind === 'spawn' || ends.indexOf(view.selected) !== -1
-    ;[E.bg, E.lbl, E.cnt].forEach(function (n) { n.setAttribute('visibility', labelled ? 'inherit' : 'hidden') })
-    var text = cut(last.text, 16)
-    if (E.key !== text + evs.length) {
-      E.key = text + evs.length
-      E.lbl.textContent = text
-      var bb = E.lbl.getBBox()
-      var extra = evs.length > 1 ? 20 : 0
-      E.bg.setAttribute('x', bb.x - 6); E.bg.setAttribute('y', bb.y - 2)
-      E.bg.setAttribute('width', bb.width + 12 + extra); E.bg.setAttribute('height', bb.height + 4)
-      E.cnt.textContent = evs.length > 1 ? '×' + evs.length : ''
-      E.cnt.setAttribute('x', bb.x + bb.width + 4); E.cnt.setAttribute('y', E.ly + 4)
-    }
-  })
-
-  var counts = { working: 0, blocked: 0, done: 0 }
-  run.agents.forEach(function (a) { var s = stateAt(run.agentStates[a.id], t); if (s in counts) counts[s]++ })
-  document.getElementById('summary').innerHTML = ['working', 'blocked', 'done'].map(function (s) {
-    return '<span class="chip s-' + s + '"><span class="dot"></span>' + STATE_LABEL[s] + ' ' + counts[s] + '</span>'
-  }).join('')
-
-  document.getElementById('feed').innerHTML = past.slice().reverse().map(function (e) {
-    return '<li class="k-' + e.kind + (t - e.t < LIVE_WINDOW_MS ? ' fresh' : '') + '"><span class="t">' + clock(e.t) + '</span><span class="k">' + KIND_LABEL[e.kind] + '</span>' +
-      '<span class="body"><span class="who">' + esc(cut(agentName(e.from), 28)) + '</span> → <span class="who">' + esc(cut(agentName(e.to), 28)) + '</span> <span class="txt">' + esc(e.text) + '</span></span></li>'
-  }).join('') || '<li class="muted">아직 이벤트가 없습니다</li>'
-
-  renderSide(past)
+function openPop(id, b) {
+  var run = view.run, now = Math.max(Date.now(), run.updatedAt)
+  var a = run.agents.filter(function (x) { return x.id === id })[0]
+  var st = stateAt(run.agentStates[id], now)
+  var since = stateSince(run.agentStates[id], now)
+  var gave = run.events.filter(function (e) { return e.from === id && (e.kind === 'dispatch' || e.kind === 'spawn') }).slice(-3)
+  var got = run.events.filter(function (e) { return e.to === id && (e.kind === 'dispatch' || e.kind === 'spawn') }).slice(-3)
+  var last = run.events.filter(function (e) { return e.from === id || e.to === id }).slice(-1)[0]
+  view.pop.innerHTML =
+    '<div class="t">' + esc(a.name) + '</div>' +
+    '<div class="m">' + esc([a.cli, a.branch].filter(Boolean).join(' · ') || (a.role === 'subagent' ? 'subagent' : 'agent')) + '</div>' +
+    '<div class="row c-' + st + '"><i class="dot"></i>' + STATE_LABEL[st] + (since ? ' · ' + elapsed(now - since) : '') + '</div>' +
+    (got.length ? '<div><b>받은 일</b><ul>' + got.map(function (e) { return '<li>' + esc(nameOf(e.from)) + ': ' + esc(e.text) + '</li>' }).join('') + '</ul></div>' : '') +
+    (gave.length ? '<div><b>시킨 일</b><ul>' + gave.map(function (e) { return '<li>' + esc(nameOf(e.to)) + ': ' + esc(e.text) + '</li>' }).join('') + '</ul></div>' : '') +
+    (last ? '<div class="m">최근: ' + esc(last.text) + ' · ' + ago(last.t) + '</div>' : '')
+  view.pop.hidden = false
+  var stageW = view.stage.clientWidth, stageH = view.stage.clientHeight
+  var sx = view.stage.scrollLeft, sy = view.stage.scrollTop
+  var pw = view.pop.offsetWidth, ph = view.pop.offsetHeight
+  var left = clamp(b.x + b.w / 2 - pw / 2 - sx, 8, Math.max(8, stageW - pw - 8))
+  var below = b.y + b.h + 6 - sy
+  var top = below + ph <= stageH - 8 ? below : Math.max(8, b.y - ph - 6 - sy)
+  view.pop.style.left = left + sx + 'px'
+  view.pop.style.top = top + sy + 'px'
 }
 
-function renderSide(past) {
-  var run = view.run, t = view.t
-  var title = document.getElementById('side-title'), side = document.getElementById('side')
-  if (!view.selected) {
-    title.textContent = '태스크 ' + run.tasks.length
-    side.innerHTML = '<table><thead><tr><th>할 일</th><th>담당</th><th>상태</th></tr></thead><tbody>' + run.tasks.map(function (k) {
-      var s = stateAt(k.states, t)
-      var pre = (k.deps && k.deps.length ? '선행 ' + k.deps.length + '개' : '') + (k.parent ? ' ↳ 하위' : '')
-      return '<tr><td>' + esc(k.title) + (pre ? '<div class="muted">' + esc(pre) + '</div>' : '') + '</td><td>' + esc(k.owner ? agentName(k.owner) : '—') + '</td>' +
-        '<td><span class="chip s-' + s + '"><span class="dot"></span>' + STATE_LABEL[s] + '</span></td></tr>'
-    }).join('') + '</tbody></table>'
-    return
-  }
-  var id = view.selected
-  var agent = run.agents.filter(function (a) { return a.id === id })[0]
-  var st = stateAt(run.agentStates[id], t)
-  var gave = past.filter(function (e) { return e.from === id && (e.kind === 'dispatch' || e.kind === 'spawn') })
-  var got = past.filter(function (e) { return e.to === id && (e.kind === 'dispatch' || e.kind === 'spawn') })
-  title.textContent = agent.name
-  side.innerHTML = '<div class="detail"><div class="row"><span class="chip s-' + st + '"><span class="dot"></span>' + STATE_LABEL[st] + '</span>' +
-    '<span class="chip">' + esc(agent.cli || 'agent') + '</span>' + (agent.branch ? '<span class="chip">' + esc(agent.branch) + '</span>' : '') +
-    (agent.live ? '' : '<span class="chip">터미널 종료됨</span>') + '</div>' +
-    '<div><b>시킨 일</b>' + (gave.map(function (e) { return '<div>→ ' + esc(agentName(e.to)) + ': ' + esc(e.text) + '</div>' }).join('') || '<div class="muted">없음</div>') + '</div>' +
-    '<div><b>받은 일</b>' + (got.map(function (e) { return '<div>← ' + esc(agentName(e.from)) + ': ' + esc(e.text) + '</div>' }).join('') || '<div class="muted">없음</div>') + '</div>' +
-    '<div class="muted">다시 누르면 태스크 목록으로 돌아갑니다</div></div>'
-}
-
-function togglePlay() {
-  if (view.timer) return stop()
-  var run = view.run
-  if (view.t >= run.updatedAt) view.t = run.createdAt
-  var step = Math.max(1000, (run.updatedAt - run.createdAt) / 300)
-  document.getElementById('play').textContent = '❚❚ 정지'
-  view.timer = setInterval(function () {
-    view.t = Math.min(run.updatedAt, view.t + step)
-    render()
-    if (view.t >= run.updatedAt) stop()
-  }, 50)
-}
-
-function stop() {
-  clearInterval(view.timer)
-  view.timer = null
-  var play = document.getElementById('play')
-  if (play) play.textContent = '▶ 재생'
+function closePop() {
+  if (view.pop) view.pop.hidden = true
+  if (view.selected) { view.selected = null; draw() }
 }
 
 boot()
